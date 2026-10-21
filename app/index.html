@@ -225,6 +225,41 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .cw-b.flash{filter:brightness(1.6)}
 @media (prefers-reduced-motion:no-preference){.cw-b.flash{transition:filter .4s}}
 .cw-b.on::after{content:"●";position:absolute;left:3px;top:1px;color:#33e07a;font-size:9px}
+.cw-b.fol{outline:3px solid var(--pau);outline-offset:1px;box-shadow:0 0 0 6px rgba(246,196,0,.25)!important}
+/* Style appli des fenêtres de codage (positions et structure d'origine conservées) */
+.cw-stage.app{background:radial-gradient(120% 90% at 15% 0,#173375 0,#0a1f4f 55%,#061431 100%);border:1px solid rgba(255,255,255,.08)}
+.cw-stage.app .cw-b{border-radius:7px;font:600 10.5px/1.1 var(--f-body)}
+.cw-stage.app .cw-b.tiny{font-size:7.5px}
+.cw-stage.app .cw-b.code,.cw-stage.app .cw-b.lab{box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 2px 5px rgba(0,0,0,.4);transition:filter .1s}
+.cw-stage.app .cw-b.code{font:700 11.5px/1.05 var(--f-display);letter-spacing:.02em;text-transform:uppercase;border-width:1px 1px 1px 4px}
+.cw-stage.app .cw-b.code.tiny{font-size:8px}
+.cw-stage.app .cw-b.code:hover,.cw-stage.app .cw-b.lab:hover{filter:brightness(1.1)}
+.cw-stage.app .cw-b.txt{background:transparent!important;color:#f3f5fb!important;font:800 12px/1 var(--f-display);letter-spacing:.08em;white-space:nowrap;text-transform:uppercase;justify-content:flex-start;padding-left:8px;border-left:3px solid var(--pau);border-radius:2px}
+.cw-stage.app .cw-b.txt.zone{border:1px dashed rgba(255,255,255,.2);border-radius:10px;background:rgba(255,255,255,.035)!important}
+.cw-stage.app .cw-b.txt.pitch{border:1px solid rgba(255,255,255,.25);background:linear-gradient(90deg,transparent calc(50% - .5px),rgba(255,255,255,.25) calc(50% - .5px),rgba(255,255,255,.25) calc(50% + .5px),transparent calc(50% + .5px)),repeating-linear-gradient(90deg,rgba(40,120,70,.35) 0 12.5%,rgba(40,120,70,.22) 12.5% 25%)!important}
+.cw-stage.app .cw-b .hk{background:rgba(0,0,0,.4);color:#fff;border-radius:4px;padding:0 3px;font:600 8px/1.3 var(--f-body);opacity:1;right:2px;bottom:2px}
+.cw-stage.app .cw-b.on{outline-offset:1px;box-shadow:0 0 0 5px rgba(51,224,122,.3)!important}
+.cw-stage.app .cw-b.tgt{outline-offset:1px}
+.cw-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 2px 8px}
+.cw-indbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 14px}
+.cw-stage.editing .cw-b.ed{pointer-events:auto;cursor:grab;touch-action:none}
+.cw-stage.editing .cw-b.ed:active{cursor:grabbing}
+.cw-stage.editing .cw-b.ed.esel{outline:3px solid #ff3df2;outline-offset:1px;z-index:5}
+.cw-stage.editing .cw-links{opacity:.55}
+.cwe-panel{display:grid;gap:12px;align-content:start}
+.cwe-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+.cwe-f{display:grid;gap:3px;font-size:12px;color:var(--ink-2);font-weight:600;min-width:0}
+.cwe-f input,.cwe-f select{width:100%;min-width:0}
+.cwe-f input[type=color]{height:32px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.cwe-sec{display:grid;gap:8px;border-top:1px solid var(--line);padding-top:10px}
+.cwe-links{display:grid;gap:4px}
+.cwe-link{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;font-size:13px}
+.cwe-link .lt{font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;color:#fff;background:#1d8a52}
+.cwe-link .lt.t2{background:#c2352b}.cwe-link .lt.t0{background:#b07800}
+.cwe-add{display:grid;grid-template-columns:auto 1fr auto;gap:6px}
+.cwe-add select{min-width:0}
+.pl-list{display:grid;gap:6px;max-height:50vh;overflow:auto}
+.pl-row{display:grid;grid-template-columns:auto 1fr auto auto;gap:6px;align-items:center}
 .cw-list{display:grid;gap:6px;max-height:420px;overflow:auto}
 .cw-row{display:grid;grid-template-columns:52px 1fr auto;gap:8px;align-items:center;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer;text-align:left}
 .cw-row[aria-pressed="true"]{border-color:var(--focus);box-shadow:0 0 0 1px var(--focus)}
@@ -920,7 +955,7 @@ async function initStorage(){
     }, () => toast("La base de matchs est indisponible : les changements restent dans ce navigateur."));
     db.collection("docs").onSnapshot(snap => { state.docs = snap.docs.map(d => ({...thaw(d.data()), id:d.id})).sort((a,b) => (b.createdAt||0) - (a.createdAt||0)); if (state.view === "docs") render(); }, () => {});
     db.collection("players").onSnapshot(snap => { state.players = {}; snap.docs.forEach(d => state.players[d.id] = thaw(d.data())); render(); }, () => {});
-    db.doc("settings/app").onSnapshot(s => { state.settings = (s.exists && thaw(s.data())) || {}; render(); }, () => {});
+    db.doc("settings/app").onSnapshot(s => { state.settings = (s.exists && thaw(s.data())) || {}; applyCustomWins(); render(); }, () => {});
   }
   render();
 }
@@ -1781,7 +1816,7 @@ const CW_IND = {"b":[{"i":0,"n":"OFFENSIVEMENT","t":2,"x":192,"y":235,"w":347,"h
 CW_COL.b.forEach(b => { if (b.x >= 790 && !b.r) b.r = "post"; });
 function cwWin(cw, target){
   const out = {}; cw.l.forEach(([ty,a,b]) => { (out[a] = out[a] || []).push([ty,b]); if (ty === 0) (out[b] = out[b] || []).push([0,a]); });
-  const vis = cw.b.filter(b => !b.r);
+  const vis = cw.b.filter(b => !b.r); if (!vis.length) vis.push({x:0, y:0, w:300, h:100});
   const y0 = Math.min(...vis.map(b => b.y)) - 8;
   return {cw, out, target, y0, W: Math.max(...vis.map(b => b.x + b.w)) + 12, H: Math.max(...vis.map(b => b.y + b.h)) - y0 + 10};
 }
@@ -1812,18 +1847,39 @@ function addLabel(ev, g, text, toggle){
 const hasL = (e, text) => (e.l || []).some(x => x.t === text);
 const WINS = {c: cwWin(CW_COL, CW_TARGET_COL), i: cwWin(CW_IND, {})};
 const IND_BASE = CW_IND.b.map(b => b.n);
-const IND_RES = (() => {
-  const r = {}, acts = CW_IND.b.filter(b => b.t === 1 && !b.g && b.n).map(b => b.n);
+const indResOf = () => {
+  const r = {}, acts = CW_IND.b.filter(b => b.t === 1 && !b.g && b.n && !b.r).map(b => b.n);
   CW_IND.l.forEach(([ty,a,b]) => { const A = CW_IND.b[a], B = CW_IND.b[b]; if (ty === 1 && A.t === 1 && B.t === 1 && A.g && !B.g && B.n !== "PERTE") r[A.g + "|" + A.n] = r[A.g + "|" + A.n] || B.n; });
   // Groupes « RESULT … » sans lien vers leur action (ex. RESULT PASSE) : retrouvés par le nom du groupe
   CW_IND.b.forEach(b => { if (b.t !== 1 || !b.g || r[b.g + "|" + b.n] || !/^RESULT/.test(b.g)) return; const base = b.g.replace(/^RESULT(AT)?\s+/, ""), w = base.split(" ");
     const hit = acts.find(n => n === base) || acts.find(n => { const v = n.split(" "); return v[0] === w[0] && v.length === w.length && v.every((x,i) => x[0] === w[i][0]); }); if (hit) r[b.g + "|" + b.n] = hit; });
-  return r; })();
+  return r; };
+let IND_RES = indResOf();
 const IND_OK = new Set(["REUSSI","GAGNE","CADRE"]), IND_KO = new Set(["PERDU","HORS CADRE"]);
-const IND_SIDE = (() => { const o = {}; CW_IND.b.forEach(b => { if (b.t === 1 && !b.r) { const key = b.g ? b.g + " : " + b.n : b.n; if (!(key in o)) o[key] = b.x + b.w/2 >= 600 ? "def" : "off"; } }); return o; })();
+const indSideOf = () => { const o = {}; CW_IND.b.forEach(b => { if (b.t === 1 && !b.r) { const key = b.g ? b.g + " : " + b.n : b.n; if (!(key in o)) o[key] = b.x + b.w/2 >= 600 ? "def" : "off"; } }); return o; };
+let IND_SIDE = indSideOf();
 // Noms des joueurs de la fenêtre indiv, modifiables (enregistrés dans les réglages de l'application)
 function applyIndivNames(){ const o = (state.settings && state.settings.indivNames) || {}; CW_IND.b.forEach((b,i) => { if (isPlayerCode({t:b.t, n:IND_BASE[i]})) b.n = o[i] || IND_BASE[i]; }); }
 setCw("c");
+// Fenêtres personnalisées (mode « Modifier la fenêtre ») : enregistrées dans les réglages, la fenêtre d'origine reste disponible
+const CW_ORIG = {c: structuredClone({b:CW_COL.b, l:CW_COL.l}), i: structuredClone({b:CW_IND.b, l:CW_IND.l})};
+const CW_OBJ = {c: CW_COL, i: CW_IND};
+let CW_APPLIED = null, cwSaveT = null;
+function rebuildWins(){ WINS.c = cwWin(CW_COL, CW_TARGET_COL); WINS.i = cwWin(CW_IND, {}); IND_RES = indResOf(); IND_SIDE = indSideOf(); setCw(CWK); }
+function applyCustomWins(force){
+  const cu = (state.settings && state.settings.cwCustom) || {}; const v = cu.v || 0;
+  if (!force && CW_APPLIED === v) return; CW_APPLIED = v;
+  for (const k of ["c","i"]){ const src = cu[k] && cu[k].b ? cu[k] : CW_ORIG[k]; CW_OBJ[k].b = structuredClone(src.b); CW_OBJ[k].l = structuredClone(src.l); }
+  if (!(cu.i && cu.i.b)) applyIndivNames();
+  rebuildWins();
+}
+function saveCustom(k, reset){
+  const cu = {...((state.settings && state.settings.cwCustom) || {})};
+  cu[k] = reset ? null : {b: structuredClone(CW_OBJ[k].b), l: structuredClone(CW_OBJ[k].l)}; cu.v = Date.now();
+  state.settings = {...(state.settings || {}), cwCustom: cu}; CW_APPLIED = cu.v;
+  if (reset) applyCustomWins(true); else rebuildWins();
+  clearTimeout(cwSaveT); cwSaveT = setTimeout(async () => { if (S.db){ try { await S.db.doc("settings/app").set(state.settings); } catch { toast("Fenêtre non enregistrée pour l'instant, réessaie."); } } }, 500);
+}
 function cwActive(m, i){ return m.events.find(e => e.live && inWin(e) && e.bi === i && e.e == null); }
 function ensureLiveMatch(){
   const m = current(); if (!m.sample) return m;
@@ -1858,6 +1914,8 @@ function cwPress(i){
   try { cwPressInner(i); } catch (err){ console.error(err); toast("Le bouton n'a pas pu être enregistré : " + (err && err.message || err), 5000); }
 }
 function cwPressInner(i){
+  const focus = CWK === "i" && state.indMode === "focus";
+  if (focus && isPlayerCode(CWB[i])){ state.indPlayer = i; render(); cwBanner(current(), null, [], [], [], "Joueur suivi : " + CWB[i].n); return; }
   const m = ensureLiveMatch();
   const t = nowSec(m); const root = CWB[i];
   const visited = new Set(), created = [], closed = [], labelled = [];
@@ -1883,7 +1941,15 @@ function cwPressInner(i){
       // Label sans lien : s'applique à l'action sélectionnée, sinon à la dernière action du code visé
       const want = CW_TARGET[b.g];
       const pool = m.events.filter(e => e.live && inWin(e));
-      const tgt = (state.cwSel && pool.find(e => e.id === state.cwSel)) || (want && [...pool].reverse().find(e => e.n === want)) || [...pool].reverse().find(e => !cwIsToggle(btnOf(e)));
+      let tgt;
+      if (focus){
+        // Joueur suivi : un descripteur d'action (sans groupe) ouvre une nouvelle séquence du joueur, les précisions (groupes) complètent la séquence en cours
+        const sel = state.indPlayer, pb = CWB[sel];
+        if (sel == null || !pb || pb.r){ toast("Choisis d'abord le joueur suivi dans la liste."); return; }
+        const last = [...pool].reverse().find(e => e.bi === sel);
+        if (cwOpensSeq(b) || !last){ run(sel, "activate", []); tgt = m.events.find(e => e.id === created[created.length - 1]); }
+        else tgt = (state.cwSel && pool.find(e => e.id === state.cwSel && e.bi === sel)) || last;
+      } else tgt = (state.cwSel && pool.find(e => e.id === state.cwSel)) || (want && [...pool].reverse().find(e => e.n === want)) || [...pool].reverse().find(e => !cwIsToggle(btnOf(e)));
       if (!tgt){ toast(CWK === "i" ? "Appuie d'abord sur un joueur." : "Aucune action à qui ajouter ce label."); return; }
       const had = (tgt.l || []).some(x => x.g === b.g && x.t === b.n);
       addLabel(tgt, b.g, b.n, true); labelled.push(tgt.id);
@@ -1945,12 +2011,17 @@ function shotDefaultsFromEvent(m, ev){
 function cwButtonHTML(b, m, tgt){
   if (b.r) return "";
   const st = `left:${b.x}px;top:${b.y - CW_Y0}px;width:${b.w}px;height:${b.h}px;background:${b.bg || "#ddd"};`;
+  if (state.cwEdit){
+    const sel = state.cwEd === b.i;
+    return `<div class="cw-b ed ${b.t === 2 ? "txt" + (b.w*b.h > 20000 || /^terrain$/.test(b.n) ? " zone" : "") : b.t === 0 ? "code" : "lab"} ${b.w < 40 ? "tiny" : ""} ${sel ? "esel" : ""}" data-ed="${b.i}" style="${st}color:${b.t === 2 ? inkOn(b.bg || "#ffffff") : b.fg || inkOn(b.bg || "#ddd")};border-color:${b.bd || "rgba(0,0,0,.4)"}" title="${esc(b.n)}">${esc(b.n)}${b.k ? `<span class="hk">${esc(b.k)}</span>` : ""}</div>`;
+  }
   if (b.t === 2){
-    const hideTxt = b.w*b.h > 20000 || /^terrain$|^Bouton \d+/.test(b.n);
-    return `<div class="cw-b txt" style="${st}color:${inkOn(b.bg || "#ffffff")}">${hideTxt ? "" : esc(b.n)}</div>`;
+    const zone = b.w*b.h > 20000 || /^terrain$|^Bouton \d+/.test(b.n);
+    return `<div class="cw-b txt ${zone ? "zone" : ""} ${/^terrain$/.test(b.n) ? "pitch" : ""}" style="${st}color:${inkOn(b.bg || "#ffffff")}">${zone ? "" : esc(b.n)}</div>`;
   }
   const on = b.t === 0 ? !!cwActive(m, b.i) : !!(tgt && (tgt.l || []).some(x => x.g === b.g && x.t === b.n));
-  return `<button type="button" class="cw-b ${b.w < 40 ? "tiny" : ""} ${b.t === 0 ? "code" : "lab"} ${on ? (b.t === 0 ? "on" : "tgt") : ""}" data-cw="${b.i}" style="${st}color:${b.fg || inkOn(b.bg || "#ddd")};border-color:${b.bd || "rgba(0,0,0,.4)"}" title="${esc(b.n + (b.g ? " · " + b.g : "") + (b.k ? " · touche " + b.k : "") + (b.ld != null ? ` · ${b.ld}s avant / ${b.lg ?? 0}s après` : ""))}">${esc(b.n)}${b.k ? `<span class="hk">${esc(b.k)}</span>` : ""}</button>`;
+  const fol = CWK === "i" && state.indMode === "focus" && state.indPlayer === b.i;
+  return `<button type="button" class="cw-b ${b.w < 40 ? "tiny" : ""} ${b.t === 0 ? "code" : "lab"} ${on ? (b.t === 0 ? "on" : "tgt") : ""} ${fol ? "fol" : ""}" data-cw="${b.i}" style="${st}color:${b.fg || inkOn(b.bg || "#ddd")};border-color:${b.bd || "rgba(0,0,0,.4)"}" title="${esc(b.n + (b.g ? " · " + b.g : "") + (b.k ? " · touche " + b.k : "") + (b.ld != null ? ` · ${b.ld}s avant / ${b.lg ?? 0}s après` : ""))}">${esc(b.n)}${b.k ? `<span class="hk">${esc(b.k)}</span>` : ""}</button>`;
 }
 const TL_ZOOMS = [.5, 1, 2, 4, 8];
 function codeOrder(n){ const mm = String(n).match(/^(\*)?\s*(\d{1,2})/); return mm ? Number(mm[2])*2 + (mm[1] ? 1 : 0) : 999; }
@@ -1982,8 +2053,78 @@ function cwLinksSVG(){
   return `<svg class="cw-links" width="${CW_W}" height="${CW_H}" viewBox="0 0 ${CW_W} ${CW_H}"><defs>${mk(0)}${mk(1)}${mk(2)}</defs>${lines}</svg>
     <div style="position:absolute;left:8px;bottom:6px;background:rgba(0,0,0,.7);color:#fff;font:600 11px Helvetica,Arial,sans-serif;padding:4px 8px;border-radius:6px"><span style="color:#33e07a">━ active</span> · <span style="color:#ff5a4e">╍ coupe</span> · <span style="color:#ffb020">━ exclusif</span></div>`;
 }
+// Joueur suivi : les descripteurs d'action (PASSE, TOUCHE, DUEL SOL…) ouvrent une séquence, les précisions (RESULT…, TYPE…, DECISIF) la complètent
+function cwOpensSeq(b){ return b.seq != null ? !!b.seq : !b.g || (!/^(RESULT|TYPE|DECISIF)/i.test(b.g) && !(CW_OUT[b.i] || []).some(([ty,k]) => ty === 1 && CWB[k] && CWB[k].t === 1 && !CWB[k].g)); }
+function cwStyle(){ return (state.settings && state.settings.cwStyle) || "app"; }
+function cwPlayers(){ return CW_IND.b.filter(b => !b.r && isPlayerCode(b)).sort((a,b) => parseInt(a.n) - parseInt(b.n)); }
+function cwIndBarHTML(){
+  const pl = cwPlayers(); const focus = state.indMode === "focus";
+  return `<section class="panel c12 cw-indbar"><div class="seg"><button data-act="cw-indmode" data-v="multi" aria-pressed="${!focus}">Pendant le collectif</button><button data-act="cw-indmode" data-v="focus" aria-pressed="${focus}">Joueur suivi</button></div>
+    ${focus ? `<label class="hint" for="cw-indpl">Joueur</label><select class="f" id="cw-indpl">${pl.map(b => `<option value="${b.i}" ${state.indPlayer === b.i ? "selected" : ""}>${esc(b.n)}</option>`).join("")}</select>` : `<span class="hint">Tu codes plusieurs joueurs : appuie sur le joueur puis sur ses descripteurs.</span>`}
+    <span style="flex:1"></span><button class="btn sm" data-act="cw-names">Gérer les joueurs</button></section>`;
+}
+const CWE_LT = {1:"Active", 2:"Coupe", 0:"Exclusif"};
+function cwEditorHTML(){
+  const b = state.cwEd != null && CWB[state.cwEd] && !CWB[state.cwEd].r ? CWB[state.cwEd] : null;
+  if (!b) return `<div class="ph"><h2>Bouton</h2></div><div class="empty">Clique un bouton de la fenêtre pour le modifier, ou ajoute un code, un label ou un titre avec les boutons au-dessus.</div>
+    <p class="hint">Codes = actions avec une durée (avant / après l'appui) ou en marche / arrêt. Labels = descripteurs ajoutés à l'action. Titres / zones = repères visuels (MES ACTIONS, ACTIONS ADV, OFF / DEF…).</p>`;
+  const fx = b.ld != null || b.lg != null;
+  const nm = x => esc(x.n || "(sans nom)") + (x.g ? " · " + esc(x.g) : "");
+  const others = CWB.filter(x => !x.r && x.t !== 2 && x.i !== b.i).sort((a,c) => String(a.n).localeCompare(String(c.n)));
+  const outs = CW.l.map((l,ix) => [l,ix]).filter(([[ty,a,c]]) => (a === b.i || c === b.i) && CWB[a] && CWB[c] && !CWB[a].r && !CWB[c].r && CWB[a].r !== "hidden" && CWB[c].r !== "hidden");
+  const f = (lab, html) => `<label class="cwe-f"><span>${lab}</span>${html}</label>`;
+  return `<div class="ph"><h2>${b.t === 0 ? "Code" : b.t === 1 ? "Label" : "Titre / zone"}</h2><div class="toolbar"><button class="btn sm" data-act="cwe-dup">Dupliquer</button><button class="btn sm danger" data-act="cwe-del">Supprimer</button></div></div>
+    <div class="cwe-grid">
+      ${f("Nom", `<input type="text" data-ef="n" value="${esc(b.n)}">`)}
+      ${f("Type", `<select class="f" data-ef="t"><option value="0" ${b.t === 0 ? "selected" : ""}>Code (action)</option><option value="1" ${b.t === 1 ? "selected" : ""}>Label (descripteur)</option><option value="2" ${b.t === 2 ? "selected" : ""}>Titre / zone</option></select>`)}
+      ${b.t === 1 ? f("Groupe", `<input type="text" data-ef="g" value="${esc(b.g || "")}" placeholder="vide = descripteur d'action">`) : ""}
+      ${b.t === 1 && CWK === "i" ? `<label class="cwe-f" style="grid-column:1/-1;display:flex;gap:8px;align-items:center"><input type="checkbox" data-ef="seq" ${cwOpensSeq(b) ? "checked" : ""} style="width:auto"><span>Joueur suivi : ce label ouvre une nouvelle séquence (sinon il complète la séquence en cours)</span></label>` : ""}
+      ${b.t !== 2 ? f("Raccourci", `<input type="text" data-ef="k" maxlength="1" value="${esc(b.k || "")}" style="width:60px">`) : ""}
+      ${f("Fond", `<input type="color" data-ef="bg" value="${b.bg || "#dddddd"}">`)}
+      ${b.t !== 2 ? f("Texte", `<input type="color" data-ef="fg" value="${b.fg || "#000000"}">`) + f("Bordure", `<input type="color" data-ef="bd" value="${b.bd || "#000000"}">`) : ""}
+      ${f("Largeur", `<input type="number" data-ef="w" min="10" max="900" value="${b.w}">`)}${f("Hauteur", `<input type="number" data-ef="h" min="8" max="700" value="${b.h}">`)}
+      ${f("X", `<input type="number" data-ef="x" value="${b.x}">`)}${f("Y", `<input type="number" data-ef="y" value="${b.y}">`)}
+    </div>
+    ${b.t === 0 ? `<div class="cwe-sec"><b>Temps</b><div class="seg"><button data-act="cwe-fix" data-v="1" aria-pressed="${fx}">Durée fixe</button><button data-act="cwe-fix" data-v="0" aria-pressed="${!fx}">Marche / arrêt</button></div>
+      ${fx ? `<div class="cwe-grid">${f("Secondes avant", `<input type="number" data-ef="ld" min="0" max="120" step="1" value="${b.ld ?? 0}">`)}${f("Secondes après", `<input type="number" data-ef="lg" min="0" max="120" step="1" value="${b.lg ?? 0}">`)}</div>` : `<p class="hint">Le code démarre au premier appui et s'arrête au second (ou quand un autre bouton le coupe).</p>`}</div>` : ""}
+    ${b.t !== 2 ? `<div class="cwe-sec"><b>Liaisons</b>
+      ${outs.length ? `<div class="cwe-links">${outs.map(([[ty,a,c],ix]) => `<div class="cwe-link"><span class="lt t${ty}">${a === b.i ? CWE_LT[ty] : ty === 0 ? "Exclusif" : ty === 1 ? "Activé par" : "Coupé par"}</span><span>${nm(CWB[a === b.i ? c : a])}</span><button class="btn sm danger" data-act="cwe-unlink" data-ix="${ix}" aria-label="Supprimer la liaison">×</button></div>`).join("")}</div>` : `<p class="hint">Aucune liaison.</p>`}
+      <div class="cwe-add"><select class="f" id="cwe-lt">${[1,2,0].map(ty => `<option value="${ty}">${CWE_LT[ty]}</option>`).join("")}</select><select class="f" id="cwe-lb">${others.map(x => `<option value="${x.i}">${nm(x)}</option>`).join("")}</select><button class="btn sm" data-act="cwe-link">Ajouter</button></div>
+      <p class="hint">Active : appuyer sur ce bouton déclenche aussi l'autre (code démarré ou label ajouté). Coupe : arrête l'autre code. Exclusif : les deux codes ne tournent jamais en même temps.</p></div>` : ""}`;
+}
+function cwEdSet(f, v){
+  const b = CWB[state.cwEd]; if (!b) return;
+  if (["w","h","x","y"].includes(f)){ const n = Math.round(Number(v)); if (!isFinite(n)) return; b[f] = f === "w" || f === "h" ? Math.max(8, n) : n; }
+  else if (f === "ld" || f === "lg"){ const n = Number(v); b[f] = isFinite(n) && n >= 0 ? n : 0; }
+  else if (f === "t"){ b.t = Number(v); if (b.t !== 1) delete b.g; if (b.t !== 0){ delete b.ld; delete b.lg; } if (b.t === 2){ delete b.k; CW.l = CW.l.filter(([ty,a,c]) => a !== b.i && c !== b.i); } }
+  else if (f === "k"){ const k = String(v).slice(0,1); if (k && CWB.some(x => x !== b && !x.r && x.k === k)) toast(`Le raccourci « ${k} » est déjà pris par ${CWB.find(x => x !== b && !x.r && x.k === k).n}.`, 3500); if (k) b.k = k; else delete b.k; }
+  else if (f === "seq") b.seq = !!v;
+  else if (f === "g"){ const g = String(v).trim(); if (g) b.g = g; else delete b.g; }
+  else b[f] = f === "n" ? String(v).trim() : v;
+  saveCustom(CWK); render();
+}
+function cwEdAdd(t){
+  const vis = CWB.filter(x => !x.r); const yMax = vis.length ? Math.max(...vis.map(x => x.y + x.h)) : 40;
+  const tpl = t === 0 ? (CWB.find(x => !x.r && x.t === 0 && !isPlayerCode(x)) || {}) : t === 1 ? (CWB.find(x => !x.r && x.t === 1 && x.g) || {}) : {};
+  const b = {i:CWB.length, n: t === 0 ? "NOUVEAU CODE" : t === 1 ? "NOUVEAU LABEL" : "TITRE", t, x:12, y:yMax + 10, w: t === 2 ? 200 : t === 0 ? 95 : 80, h: t === 2 ? 18 : t === 0 ? 28 : 24,
+    bg: tpl.bg || (t === 2 ? "#ffffff" : t === 0 ? "#c40000" : "#d3ccff"), bd: tpl.bd || "#26598c", fg: tpl.fg || (t === 0 ? "#ffffff" : "#000000")};
+  if (t === 0){ b.ld = 5; b.lg = 5; const hid = CWB.find(x => x.r === "hidden"); if (hid) CW.l.push([1, b.i, hid.i]); }
+  CWB.push(b); state.cwEd = b.i; saveCustom(CWK); render();
+}
+function cwEdDel(i){
+  const b = CWB[i]; if (!b || b.r) return;
+  b.r = "del"; CW.l = CW.l.filter(([ty,a,c]) => a !== i && c !== i); state.cwEd = null; saveCustom(CWK); render();
+  toast(`« ${b.n} » supprimé. Ctrl+Z ne s'applique pas ici : recrée-le avec + Code / + Label si besoin.`, 3500);
+}
+function cwEdDup(i){
+  const s0 = CWB[i]; if (!s0) return;
+  const b = {...structuredClone(s0), i:CWB.length, x:s0.x + 10, y:s0.y + s0.h + 4}; delete b.k;
+  CW.l.filter(([ty,a]) => a === i).forEach(([ty,a,c]) => CW.l.push([ty, b.i, c]));
+  CWB.push(b); state.cwEd = b.i; saveCustom(CWK); render();
+}
 function renderCodage(m){
-  applyIndivNames(); setCw(state.cwMode === "i" ? "i" : "c");
+  applyCustomWins(); if (!((state.settings && state.settings.cwCustom) || {}).i) applyIndivNames(); setCw(state.cwMode === "i" ? "i" : "c");
+  if (CWK === "i" && state.indMode === "focus" && (state.indPlayer == null || !CWB[state.indPlayer] || CWB[state.indPlayer].r || !isPlayerCode(CWB[state.indPlayer]))){ const f = cwPlayers()[0]; state.indPlayer = f ? f.i : null; }
   const c = liveClock(m); const t = nowSec(m);
   const live = m.events.filter(e => e.live && inWin(e));
   const recent = live.slice(-25).reverse();
@@ -2014,9 +2155,15 @@ function renderCodage(m){
       <span class="hint">Ces labels sont ajoutés à chaque action, comme dans ta fenêtre (plus Halftime, QT et Minute).</span></div>
     ${m.sample ? `<p class="hint" style="margin:8px 0 0">Tu es sur le match d'exemple : lancer la timeline ou appuyer sur un bouton crée automatiquement un nouveau match à coder.</p>` : ""}</section>
 
-    <section class="panel c12" style="padding:10px"><div class="cw-stage" id="cw-stage"><div class="cw-inner" id="cw-inner" style="width:${CW_W}px;height:${CW_H}px">${order.map(b => cwButtonHTML(b, m, tgt)).join("")}${state.cwLinks ? cwLinksSVG() : ""}</div></div>
-      <p class="hint" style="margin:8px 4px 0">${CWK === "i" ? `Appuie sur un joueur (raccourci affiché sur le bouton), puis sur l'action et son résultat : ils s'ajoutent à sa dernière action (8 s avant / 8 s après). Chaque joueur codé alimente l'onglet Indiv. <button class="btn sm" data-act="cw-names">Modifier les joueurs</button>` : `Raccourcis clavier actifs (AZERTY) : a = but pour, z = tir, e = centre, & / é = attaque / défense… Majuscule = action adverse. Vert = action en cours.`} ${tgt ? "Bleu = labels de l'action sélectionnée." : ""} TAB coupe tout, Ctrl+Z annule.
-        <button class="btn sm" data-act="cw-links">${state.cwLinks ? "Masquer les liens" : "Afficher les liens"}</button></p></section>
+    ${CWK === "i" && !state.cwEdit ? cwIndBarHTML() : ""}
+    <section class="panel ${state.cwEdit ? "c8" : "c12"}" style="padding:10px">
+      <div class="cw-tools">${state.cwEdit ? `<b>Modification de la fenêtre ${CWK === "i" ? "indiv" : "collective"}</b><span class="hint">Glisse un bouton pour le déplacer, clique pour le modifier. Flèches = déplacer, Suppr = supprimer.</span><span style="flex:1"></span>
+        <button class="btn sm" data-act="cwe-add" data-t="0">+ Code</button><button class="btn sm" data-act="cwe-add" data-t="1">+ Label</button><button class="btn sm" data-act="cwe-add" data-t="2">+ Titre / zone</button>${CWK === "i" ? `<button class="btn sm" data-act="cw-names">Joueurs</button>` : ""}<button class="btn sm danger" data-act="cwe-reset">Fenêtre d'origine</button><button class="btn sm primary" data-act="cwe-done">Terminer</button>`
+        : `<span style="flex:1"></span><div class="seg"><button data-act="cw-style" data-v="app" aria-pressed="${cwStyle() === "app"}">Style appli</button><button data-act="cw-style" data-v="sc" aria-pressed="${cwStyle() === "sc"}">Style Sportscode</button></div><button class="btn sm" data-act="cwe-start">✎ Modifier la fenêtre</button>`}</div>
+      <div class="cw-stage ${cwStyle() === "app" ? "app" : ""} ${state.cwEdit ? "editing" : ""}" id="cw-stage"><div class="cw-inner" id="cw-inner" style="width:${CW_W}px;height:${CW_H}px">${order.map(b => cwButtonHTML(b, m, tgt)).join("")}${state.cwLinks || state.cwEdit ? cwLinksSVG() : ""}</div></div>
+      ${state.cwEdit ? "" : `<p class="hint" style="margin:8px 4px 0">${CWK === "i" ? (state.indMode === "focus" ? `Joueur suivi : chaque descripteur d'action (PASSE, TOUCHE, DUEL SOL…) ouvre une nouvelle séquence pour le joueur choisi, les précisions (AVANT, GAGNE, REUSSI…) complètent la séquence en cours. Appuyer sur un joueur le choisit comme joueur suivi.` : `Appuie sur un joueur (raccourci affiché sur le bouton), puis sur l'action et son résultat : ils s'ajoutent à sa dernière action (8 s avant / 8 s après). Chaque joueur codé alimente l'onglet Indiv.`) : `Raccourcis clavier actifs (AZERTY) : a = but pour, z = tir, e = centre, & / é = attaque / défense… Majuscule = action adverse. Vert = action en cours.`} ${tgt ? "Bleu = labels de l'action sélectionnée." : ""} TAB coupe tout, Ctrl+Z annule.
+        <button class="btn sm" data-act="cw-links">${state.cwLinks ? "Masquer les liens" : "Afficher les liens"}</button></p>`}</section>
+    ${state.cwEdit ? `<section class="panel c4 cwe-panel">${cwEditorHTML()}</section>` : ""}
 
     <section class="panel c12"><div class="ph"><h2>Timeline</h2><div class="toolbar"><span class="sub">${live.length} actions</span>
       <div class="seg"><button data-act="tl-zoom" data-z="-1" aria-label="Dézoomer">−</button><button data-act="tl-zoom" data-z="1" aria-label="Zoomer">+</button></div>
@@ -2068,18 +2215,39 @@ function indivSummaryHTML(m){
   return `<table class="t"><thead><tr><th>Joueur</th><th style="text-align:right">Séquences</th><th style="text-align:right">Réussite</th></tr></thead><tbody>${rows.map(([p,r]) => `<tr><td><button class="btn sm" data-act="cw-player" data-p="${esc(p)}">${esc(p)}</button></td><td class="n">${r.n}</td><td class="n">${r.ok + r.ko ? Math.round(r.ok/(r.ok + r.ko)*100) + " %" : "–"}</td></tr>`).join("")}</tbody></table>`;
 }
 function openIndivNames(){
-  const rows = CW_IND.b.map((b,i) => ({i, base:IND_BASE[i], b})).filter(r => isPlayerCode({t:r.b.t, n:r.base})).sort((a,b) => parseInt(a.base) - parseInt(b.base));
+  applyCustomWins(); if (!((state.settings && state.settings.cwCustom) || {}).i) applyIndivNames();
+  const W = CW_IND; let rows = cwPlayers().map(b => ({i:b.i, num:(String(b.n).match(/^\s*(\d+)/) || [,""])[1], name:playerFromCode(b.n), k:b.k || ""}));
   const bg = document.createElement("div"); bg.className = "modal-bg";
-  bg.innerHTML = `<div class="modal" role="dialog" aria-label="Joueurs du codage indiv"><h3>Joueurs du codage indiv</h3><p class="hint">Garde le format « numéro - nom ». Les raccourcis clavier restent les mêmes.</p>
-    <div class="form" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${rows.map(r => `<label class="hint">${esc(r.base)}<input class="f" data-i="${r.i}" value="${esc(r.b.n)}"></label>`).join("")}</div>
-    <div class="actions"><button class="btn" data-x="no">Annuler</button><button class="btn primary" data-x="ok">Enregistrer</button></div></div>`;
-  document.body.appendChild(bg);
-  bg.querySelector('[data-x="no"]').onclick = () => bg.remove();
-  bg.querySelector('[data-x="ok"]').onclick = async () => {
-    const o = {}; bg.querySelectorAll("input[data-i]").forEach(inp => { const v = inp.value.trim(); if (v && v !== IND_BASE[+inp.dataset.i]) o[inp.dataset.i] = /^\d+\s*-/.test(v) ? v : IND_BASE[+inp.dataset.i].match(/^\s*\d+/)[0] + " - " + v; });
-    state.settings = {...(state.settings || {}), indivNames:o}; bg.remove(); render();
-    if (S.db){ try { await S.db.doc("settings/app").set(state.settings); } catch { toast("Noms non enregistrés pour l'instant."); } }
+  const draw = () => {
+    bg.innerHTML = `<div class="modal" role="dialog" aria-label="Joueurs du codage indiv"><h3>Joueurs du codage indiv</h3><p class="hint">Numéro, nom et raccourci clavier. Un joueur ajouté apparaît dans la fenêtre indiv (déplace-le ensuite avec « Modifier la fenêtre »). Les séquences déjà codées gardent leur nom.</p>
+      <div class="pl-list">${rows.map((r,ix) => `<div class="pl-row"><input type="text" data-ix="${ix}" data-f="num" value="${esc(r.num)}" aria-label="Numéro" style="width:56px"><input type="text" data-ix="${ix}" data-f="name" value="${esc(r.name)}" aria-label="Nom"><input type="text" data-ix="${ix}" data-f="k" maxlength="1" value="${esc(r.k)}" aria-label="Raccourci" style="width:48px" placeholder="tch"><button class="btn sm danger" data-del="${ix}" aria-label="Supprimer ce joueur">×</button></div>`).join("")}</div>
+      <div><button class="btn" data-x="add">+ Ajouter un joueur</button></div>
+      <div class="actions"><button class="btn" data-x="no">Annuler</button><button class="btn primary" data-x="ok">Enregistrer</button></div></div>`;
   };
+  const sync = () => bg.querySelectorAll("input[data-ix]").forEach(inp => { rows[+inp.dataset.ix][inp.dataset.f] = inp.value.trim(); });
+  draw(); document.body.appendChild(bg);
+  bg.addEventListener("click", async (e) => {
+    const d = e.target.closest("[data-del]"), x = e.target.closest("[data-x]");
+    if (d){ sync(); rows.splice(+d.dataset.del, 1); draw(); return; }
+    if (!x) return;
+    if (x.dataset.x === "no"){ bg.remove(); return; }
+    if (x.dataset.x === "add"){ sync(); const used = new Set(rows.map(r => +r.num)); let n = 1; while (used.has(n)) n++; rows.push({i:null, num:String(n).padStart(2,"0"), name:"Nouveau joueur", k:""}); draw(); const ins = bg.querySelectorAll('input[data-f="name"]'); ins[ins.length - 1].select(); return; }
+    if (x.dataset.x === "ok"){
+      sync();
+      const keep = new Set(rows.filter(r => r.i != null).map(r => r.i));
+      cwPlayers().forEach(b => { if (!keep.has(b.i)){ b.r = "del"; W.l = W.l.filter(([ty,a,c]) => a !== b.i && c !== b.i); } });
+      const tpl = cwPlayers()[0] || CW_ORIG.i.b.find(b => isPlayerCode(b));
+      const pls = cwPlayers(); let nx = pls.length ? Math.max(...pls.map(b => b.x)) : 20, ny = pls.length ? Math.max(...pls.filter(b => b.x === nx).map(b => b.y + b.h)) + 6 : 60;
+      rows.forEach(r => {
+        const n = `${(r.num || "0").padStart(2,"0")} - ${r.name || "Joueur"}`;
+        if (r.i != null){ const b = W.b[r.i]; b.n = n; if (r.k) b.k = r.k; else delete b.k; return; }
+        const b = {i:W.b.length, n, t:0, x:nx, y:ny, w:tpl.w || 100, h:tpl.h || 32, bg:tpl.bg || "#bdc400", bd:tpl.bd || "#26598c", fg:tpl.fg || "#000000", ld:tpl.ld ?? 8, lg:tpl.lg ?? 8};
+        if (r.k) b.k = r.k; ny += b.h + 6;
+        W.b.push(b); const hid = W.b.find(x => x.r === "hidden"); if (hid) W.l.push([1, b.i, hid.i]);
+      });
+      bg.remove(); saveCustom("i"); render(); toast("Joueurs enregistrés.", 1500);
+    }
+  });
 }
 function fitCodage(){
   const stage = $("#cw-stage"), inner = $("#cw-inner"); if (!stage || !inner) return;
@@ -2128,8 +2296,21 @@ document.addEventListener("click", async (evt) => {
   else if (a === "cw-links"){ state.cwLinks = !state.cwLinks; render(); }
   else if (a === "cw-shotf"){ state.cwShot = {...(state.cwShot && state.cwShot.id === t.dataset.id ? state.cwShot : {}), id:t.dataset.id, [t.dataset.f]:t.dataset.v}; render(); }
   else if (a === "cw-player"){ state.view = "indiv"; state.scope = "match"; state.player = t.dataset.p; render(); }
-  else if (a === "cw-mode"){ state.cwMode = t.dataset.v; state.cwSel = null; render(); }
+  else if (a === "cw-mode"){ state.cwMode = t.dataset.v; state.cwSel = null; state.cwEd = null; render(); }
   else if (a === "cw-names") openIndivNames();
+  else if (a === "cw-style"){ state.settings = {...(state.settings || {}), cwStyle:t.dataset.v}; render(); if (S.db){ try { await S.db.doc("settings/app").set(state.settings); } catch {} } }
+  else if (a === "cw-indmode"){ state.indMode = t.dataset.v; state.cwSel = null; render(); }
+  else if (a === "cwe-start"){ state.cwEdit = true; state.cwEd = null; render(); }
+  else if (a === "cwe-done"){ state.cwEdit = false; state.cwEd = null; render(); toast("Fenêtre enregistrée.", 1500); }
+  else if (a === "cwe-add") cwEdAdd(Number(t.dataset.t));
+  else if (a === "cwe-del") cwEdDel(state.cwEd);
+  else if (a === "cwe-dup") cwEdDup(state.cwEd);
+  else if (a === "cwe-fix"){ const b = CWB[state.cwEd]; if (b){ if (t.dataset.v === "1"){ b.ld = b.ld ?? 5; b.lg = b.lg ?? 5; } else { delete b.ld; delete b.lg; } saveCustom(CWK); render(); } }
+  else if (a === "cwe-unlink"){ CW.l.splice(Number(t.dataset.ix), 1); saveCustom(CWK); render(); }
+  else if (a === "cwe-link"){ const ty = Number($("#cwe-lt").value), to = Number($("#cwe-lb").value), i = state.cwEd; if (!isFinite(to) || i == null) return;
+    if (CW.l.some(([y,a2,c]) => y === ty && (a2 === i && c === to || ty === 0 && a2 === to && c === i))){ toast("Cette liaison existe déjà."); return; }
+    CW.l.push([ty, i, to]); saveCustom(CWK); render(); }
+  else if (a === "cwe-reset") confirmBox(`Revenir à la fenêtre ${CWK === "i" ? "indiv" : "collective"} d'origine ? Tes modifications de cette fenêtre (boutons, liaisons, joueurs) seront perdues.`, "Revenir à l'origine", () => { state.cwEd = null; saveCustom(CWK, true); render(); toast("Fenêtre d'origine rétablie.", 1500); });
   else if (a === "tl-zoom"){ state.tlZoom = clamp((state.tlZoom ?? 2) + Number(t.dataset.z), 0, TL_ZOOMS.length - 1); render(); }
   else if (a === "tl-follow"){ state.tlFollow = state.tlFollow === false; render(); }
   else if (a === "cw-sel"){ if (evt.target.closest('[data-act="cw-del"]')) return; state.cwSel = state.cwSel === t.dataset.id ? null : t.dataset.id; render(); }
@@ -2144,14 +2325,36 @@ document.addEventListener("click", async (evt) => {
   }
 });
 // Appui immédiat (comme Sportscode) : on réagit au pointerdown, insensible aux rafraîchissements de la page
+// Mode « Modifier la fenêtre » : glisser pour déplacer, clic pour sélectionner
+document.addEventListener("pointerdown", (evt) => {
+  const el = evt.target.closest && evt.target.closest(".cw-b[data-ed]"); if (!el || evt.button !== 0 || !state.cwEdit) return;
+  evt.preventDefault(); const b = CWB[Number(el.dataset.ed)]; if (!b) return;
+  const inner = $("#cw-inner"); const sc = inner.getBoundingClientRect().width / CW_W || 1;
+  const x0 = evt.clientX, y0 = evt.clientY, bx = b.x, by = b.y; let moved = false;
+  const mv = (e) => { const dx = (e.clientX - x0)/sc, dy = (e.clientY - y0)/sc; if (!moved && Math.hypot(dx, dy) < 3) return; moved = true;
+    b.x = Math.round((bx + dx)/2)*2; b.y = Math.round((by + dy)/2)*2; el.style.left = b.x + "px"; el.style.top = (b.y - CW_Y0) + "px"; };
+  const up = () => { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); state.cwEd = b.i; if (moved) saveCustom(CWK); render(); };
+  document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
+});
 document.addEventListener("pointerdown", (evt) => {
   const b = evt.target.closest && evt.target.closest(".cw-b[data-cw]"); if (!b || evt.button !== 0) return;
   evt.preventDefault(); cwPress(Number(b.dataset.cw));
 });
-document.addEventListener("change", (evt) => { if (evt.target.id === "cw-half"){ const m = current(); liveClock(m).halfLen = Number(evt.target.value); persist(m); render(); } });
+document.addEventListener("change", (evt) => {
+  if (evt.target.dataset && evt.target.dataset.ef && state.cwEdit){ cwEdSet(evt.target.dataset.ef, evt.target.type === "checkbox" ? evt.target.checked : evt.target.value); return; }
+  if (evt.target.id === "cw-indpl"){ state.indPlayer = Number(evt.target.value); state.cwSel = null; render(); return; }
+  if (evt.target.id === "cw-half"){ const m = current(); liveClock(m).halfLen = Number(evt.target.value); persist(m); render(); } });
 document.addEventListener("keydown", (evt) => {
   if (state.view !== "codage" || document.querySelector(".modal-bg") || (AI.open && evt.target.closest && evt.target.closest(".ai-panel"))) return;
   if (evt.target.closest && evt.target.closest("input,textarea,select")) return;
+  if (state.cwEdit){
+    const b = CWB[state.cwEd]; if (!b || b.r) return;
+    const st = evt.shiftKey ? 10 : 1, d = {ArrowLeft:[-st,0], ArrowRight:[st,0], ArrowUp:[0,-st], ArrowDown:[0,st]}[evt.key];
+    if (d){ evt.preventDefault(); b.x += d[0]; b.y += d[1]; saveCustom(CWK); render(); }
+    else if (evt.key === "Delete" || evt.key === "Backspace"){ evt.preventDefault(); cwEdDel(b.i); }
+    else if (evt.key === "Escape"){ state.cwEd = null; render(); }
+    return;
+  }
   if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "z"){ evt.preventDefault(); cwUndo(); return; }
   if (evt.key === "Tab"){ evt.preventDefault(); cwStopAll(); return; }
   if (evt.ctrlKey || evt.metaKey || evt.altKey || evt.key.length !== 1) return;
