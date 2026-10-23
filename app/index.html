@@ -282,7 +282,7 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .tl-name{position:sticky;left:0;z-index:2;flex:none;width:190px;background:var(--surface);border-right:1px solid var(--line);font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tl-name i{display:inline-block;width:10px;height:10px;border-radius:2px;flex:none}
 .tl-track{position:relative;flex:none}
-.tl-bar{position:absolute;top:4px;height:17px;border-radius:3px;border:1px solid rgba(0,0,0,.35);cursor:pointer;min-width:3px;padding:0}
+.tl-bar{position:absolute;top:4px;height:17px;border-radius:3px;border:1px solid rgba(0,0,0,.35);box-shadow:0 0 0 1px rgba(255,255,255,.85);cursor:pointer;min-width:3px;padding:0}
 .tl-bar.sel{outline:2px solid var(--focus);outline-offset:1px}
 .tl-bar.act{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.35) 0 6px,transparent 6px 12px)}
 .tl-axis{position:sticky;top:0;z-index:3;height:22px;background:var(--surface);border-bottom:1px solid var(--line)}
@@ -2053,12 +2053,12 @@ function timelineHTML(m){
   const live = m.events.filter(e => e.live && inWin(e)); const now = nowSec(m);
   const sc = TL_ZOOMS[state.tlZoom ?? 2];
   const span = Math.max(300, now + 60, ...live.map(e => (e.e ?? now) + 30));
-  const names = [...new Set(live.map(e => e.n))].sort((a,b) => codeOrder(a) - codeOrder(b) || a.localeCompare(b));
+  const names = [...new Set(live.map(tlKey))].sort((a,b) => codeOrder(a) - codeOrder(b) || a.localeCompare(b));
   const width = Math.ceil(span*sc);
   const step = sc >= 4 ? 60 : sc >= 1 ? 300 : 600;
   let axis = ""; for (let x = 0; x <= span; x += step) axis += `<b style="left:${190 + x*sc}px"></b><span style="left:${190 + x*sc}px">${Math.round(x/60)}'</span>`;
   const rows = names.map(n => {
-    const evs = live.filter(e => e.n === n); const bg = btnOf(evs[0]).bg || "#666";
+    const evs = live.filter(e => tlKey(e) === n); const bg = btnOf(evs[0]).bg || "#666";
     return `<div class="tl-row"><div class="tl-name" title="${esc(n)}"><i style="background:${bg}"></i>${esc(n)} <span class="hint">${evs.length}</span></div><div class="tl-track" style="width:${width}px">${evs.map(e => {
       const end = e.e ?? now; const lbl = (e.l || []).filter(x => !/^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/.test(x.g)).map(x => x.t).join(", ");
       return `<button type="button" class="tl-bar ${e.e == null ? "act" : ""} ${state.cwSel === e.id ? "sel" : ""}" data-act="cw-sel" data-id="${e.id}" style="left:${e.t*sc}px;width:${Math.max(3,(end - e.t)*sc)}px;background-color:${bg}" title="${esc(n)} · ${mmss(e.t)}–${mmss(end)}${lbl ? " · " + esc(lbl) : ""}"></button>`; }).join("")}</div></div>`; }).join("");
@@ -2093,7 +2093,10 @@ function cwLinksSVG(){
     <div style="position:absolute;left:8px;bottom:6px;background:rgba(0,0,0,.7);color:#fff;font:600 11px Helvetica,Arial,sans-serif;padding:4px 8px;border-radius:6px"><span style="color:#33e07a">━ active</span> · <span style="color:#ff5a4e">╍ coupe</span> · <span style="color:#ffb020">━ exclusif</span></div>`;
 }
 // Joueur suivi : les descripteurs d'action (PASSE, TOUCHE, DUEL SOL…) ouvrent une séquence, les précisions (RESULT…, TYPE…, DECISIF) la complètent
-function cwOpensSeq(b){ return b.seq != null ? !!b.seq : !b.g || (!/^(RESULT|TYPE|DECISIF)/i.test(b.g) && !(CW_OUT[b.i] || []).some(([ty,k]) => ty === 1 && CWB[k] && CWB[k].t === 1 && !CWB[k].g)); }
+function cwOpensSeq(b){ return b.seq != null ? !!b.seq : !b.g || (!/^(RESULT|TYPE)/i.test(b.g) && !(CW_OUT[b.i] || []).some(([ty,k]) => ty === 1 && CWB[k] && CWB[k].t === 1 && !CWB[k].g)); }
+// Ligne de timeline : en indiv, une ligne par joueur et par action (PASSE, TOUCHE…) pour bien séparer les séquences
+const SEQ_CTX = /^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/;
+function tlKey(e){ if (e.w !== "i") return e.n; const a = (e.l || []).find(x => !SEQ_CTX.test(x.g) && (!x.g || !/^(RESULT|TYPE)/i.test(x.g))); return a ? e.n + " · " + a.t : e.n; }
 function cwStyle(){ return (state.settings && state.settings.cwStyle) || "app"; }
 function cwPlayers(){ return CW_IND.b.filter(b => !b.r && isPlayerCode(b)).sort((a,b) => parseInt(a.n) - parseInt(b.n)); }
 function cwIndBarHTML(){
