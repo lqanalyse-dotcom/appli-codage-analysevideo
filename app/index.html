@@ -287,7 +287,13 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .tl-axis{position:sticky;top:0;z-index:3;height:22px;background:var(--surface);border-bottom:1px solid var(--line)}
 .tl-axis span{position:absolute;top:3px;font-size:11px;color:var(--ink-2);transform:translateX(-50%);font-variant-numeric:tabular-nums}
 .tl-axis b{position:absolute;bottom:0;width:1px;height:6px;background:var(--line)}
-.tl-head{position:absolute;top:0;bottom:0;width:2px;background:var(--bad);z-index:1;pointer-events:none}
+.tl-head{position:absolute;top:0;bottom:0;width:2px;background:var(--bad);z-index:4;pointer-events:none}
+.tl-head .tl-knob{position:absolute;top:0;left:-7px;width:16px;height:22px;pointer-events:auto;cursor:ew-resize;touch-action:none}
+.tl-head .tl-knob::before{content:"";position:absolute;left:1px;top:2px;border:7px solid transparent;border-top:12px solid var(--bad)}
+.tl-head::after{content:"";position:absolute;top:0;bottom:0;left:-5px;width:12px;pointer-events:auto;cursor:ew-resize}
+.tl-head.drag{background:var(--focus)}.tl-head.drag .tl-knob::before{border-top-color:var(--focus)}
+.tl-head .tl-knob[data-t]::after{content:attr(data-t);position:absolute;left:18px;top:2px;background:var(--navy);color:#fff;font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px;white-space:nowrap}
+.tl-axis{cursor:ew-resize}
 .cw-links{position:absolute;inset:0;pointer-events:none;overflow:visible}
 /* Assistant Claude */
 .ai-fab{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--navy);color:var(--on-navy);border:2px solid var(--pau);border-radius:999px;padding:10px 16px;font-weight:700;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);font-family:var(--f-display);letter-spacing:.05em;text-transform:uppercase;font-size:15px}
@@ -2001,7 +2007,7 @@ function cwClockAct(a){
 }
 function cwClockInner(a){
   const m = ensureLiveMatch(); const c = liveClock(m); const now = Date.now();
-  if (a === "k1"){ c.base = 0; c.half = 1; c.k2at = null; c.run = true; c.at = now; }
+  if (a === "k1"){ c.base = 0; c.half = 1; c.k2at = null; c.shift = 0; c.run = true; c.at = now; }
   else if (a === "k2"){ const t = nowSec(m); c.base = t; c.k2at = t; c.half = 2; c.run = true; c.at = now; }
   else if (a === "end1"){ c.base = nowSec(m); c.run = false; }
   else if (a === "pause"){ c.base = nowSec(m); c.run = false; }
@@ -2053,8 +2059,23 @@ function timelineHTML(m){
     return `<div class="tl-row"><div class="tl-name" title="${esc(n)}"><i style="background:${bg}"></i>${esc(n)} <span class="hint">${evs.length}</span></div><div class="tl-track" style="width:${width}px">${evs.map(e => {
       const end = e.e ?? now; const lbl = (e.l || []).filter(x => !/^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/.test(x.g)).map(x => x.t).join(", ");
       return `<button type="button" class="tl-bar ${e.e == null ? "act" : ""} ${state.cwSel === e.id ? "sel" : ""}" data-act="cw-sel" data-id="${e.id}" style="left:${e.t*sc}px;width:${Math.max(3,(end - e.t)*sc)}px;background-color:${bg}" title="${esc(n)} · ${mmss(e.t)}–${mmss(end)}${lbl ? " · " + esc(lbl) : ""}"></button>`; }).join("")}</div></div>`; }).join("");
-  return `<div class="tl-content" style="width:${190 + width}px"><div class="tl-axis">${axis}</div>${rows || `<div class="empty" style="margin:12px;position:sticky;left:12px;max-width:520px">La timeline se remplit dès que tu appuies sur un bouton.</div>`}<div class="tl-head" id="tl-head" style="left:${190 + now*sc}px"></div></div>`;
+  return `<div class="tl-content" style="width:${190 + width}px"><div class="tl-axis">${axis}</div>${rows || `<div class="empty" style="margin:12px;position:sticky;left:12px;max-width:520px">La timeline se remplit dès que tu appuies sur un bouton.</div>`}<div class="tl-head" id="tl-head" style="left:${190 + now*sc}px" title="Glisse le curseur pour le déplacer"><span class="tl-knob"></span></div></div>`;
 }
+// Curseur de la timeline déplaçable à la main ; shift = décalage cumulé, annulable avec « Remettre le curseur »
+function tlMoveTo(m, t, track){ const c = liveClock(m); t = Math.max(0, t); if (track) c.shift = (c.shift || 0) + (t - nowSec(m)); c.base = t; c.at = Date.now(); }
+document.addEventListener("pointerdown", (evt) => {
+  const h = evt.target.closest && evt.target.closest("#tl-head .tl-knob, #tl-head, #cw-tl .tl-axis"); if (!h || evt.button !== 0 || state.view !== "codage") return;
+  const tl = $("#cw-tl"), content = tl && tl.querySelector(".tl-content"); if (!content) return;
+  evt.preventDefault(); const m = current(); const sc = TL_ZOOMS[state.tlZoom ?? 2]; const from = nowSec(m);
+  const tAt = e => Math.max(0, (e.clientX - content.getBoundingClientRect().left - 190)/sc);
+  state.tlDrag = true;
+  const mv = e => { const t = tAt(e), hd = $("#tl-head"); if (!hd) return; hd.classList.add("drag"); hd.style.left = (190 + t*sc) + "px"; const k = hd.querySelector(".tl-knob"); if (k) k.dataset.t = clockLabel(m, t);
+    const r = tl.getBoundingClientRect(); if (e.clientX > r.right - 30) tl.scrollLeft += 20; else if (e.clientX < r.left + 220) tl.scrollLeft -= 20; };
+  const up = e => { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); state.tlDrag = false;
+    const t = tAt(e); if (Math.abs(t - from) >= 1){ tlMoveTo(m, t, true); persist(m); toast(`Curseur déplacé à ${clockLabel(m, t)}. « Remettre le curseur » pour revenir.`, 2500); }
+    render(); };
+  mv(evt); document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
+});
 function tlFollow(){
   const w = $("#cw-tl"), h = $("#tl-head"); if (!w || !h || state.tlFollow === false) return;
   const x = parseFloat(h.style.left); if (x > w.scrollLeft + w.clientWidth - 80 || x < w.scrollLeft + 190) w.scrollLeft = Math.max(0, x - w.clientWidth*.6);
@@ -2182,6 +2203,7 @@ function renderCodage(m){
 
     <section class="panel c12"><div class="ph"><h2>Timeline</h2><div class="toolbar"><span class="sub">${live.length} actions</span>
       <div class="seg"><button data-act="tl-zoom" data-z="-1" aria-label="Dézoomer">−</button><button data-act="tl-zoom" data-z="1" aria-label="Zoomer">+</button></div>
+      ${liveClock(m).shift ? `<button class="btn sm primary" data-act="tl-back" title="Annule le déplacement manuel du curseur">↺ Remettre le curseur</button>` : ""}<button class="btn sm" data-act="tl-last" title="Place le curseur à la fin de la dernière séquence codée">Aller à la dernière séquence</button>
       <button class="btn sm" data-act="tl-follow" aria-pressed="${state.tlFollow !== false}">${state.tlFollow !== false ? "Suivi activé" : "Suivre la tête de lecture"}</button></div></div>
       <div class="tl-wrap" id="cw-tl">${timelineHTML(m)}</div></section>
 
@@ -2274,7 +2296,7 @@ setInterval(() => {
   if (state.view !== "codage") return; const el = $("#cw-clock"); if (!el) return;
   const m = current(); const c = liveClock(m); if (!c.run) return;
   el.firstChild.nodeValue = clockLabel(m, nowSec(m)); if (matchTime(m, nowSec(m)).extra > 0 && !el.dataset.x){ el.dataset.x = 1; render(); }
-  const tl = $("#cw-tl"); if (tl && (state.tlTick = (state.tlTick || 0) + 1) % 2 === 0){ const sl = tl.scrollLeft, st = tl.scrollTop; tl.innerHTML = timelineHTML(m); tl.scrollLeft = sl; tl.scrollTop = st; tlFollow(); }
+  const tl = $("#cw-tl"); if (tl && !state.tlDrag && (state.tlTick = (state.tlTick || 0) + 1) % 2 === 0){ const sl = tl.scrollLeft, st = tl.scrollTop; tl.innerHTML = timelineHTML(m); tl.scrollLeft = sl; tl.scrollTop = st; tlFollow(); }
 }, 500);
 function exportSportscodeXML(m){
   const evs = m.events.filter(e => (!e.pl || e.w === "i") && (e.e != null || e.live)).slice().sort((a,b) => a.t - b.t);
@@ -2327,6 +2349,8 @@ document.addEventListener("click", async (evt) => {
     CW.l.push([ty, i, to]); saveCustom(CWK); render(); }
   else if (a === "cwe-reset") confirmBox(`Revenir à la fenêtre ${CWK === "i" ? "indiv" : "collective"} d'origine ? Tes modifications de cette fenêtre (boutons, liaisons, joueurs) seront perdues.`, "Revenir à l'origine", () => { state.cwEd = null; saveCustom(CWK, true); render(); toast("Fenêtre d'origine rétablie.", 1500); });
   else if (a === "tl-zoom"){ state.tlZoom = clamp((state.tlZoom ?? 2) + Number(t.dataset.z), 0, TL_ZOOMS.length - 1); render(); }
+  else if (a === "tl-back"){ const c = liveClock(m); tlMoveTo(m, nowSec(m) - (c.shift || 0)); c.shift = 0; persist(m); render(); toast("Curseur remis à sa place.", 1500); }
+  else if (a === "tl-last"){ const live = m.events.filter(e => e.live && inWin(e)); if (!live.length){ toast("Aucune séquence codée."); return; } tlMoveTo(m, Math.max(...live.map(e => e.e ?? e.t)), true); persist(m); render(); }
   else if (a === "tl-follow"){ state.tlFollow = state.tlFollow === false; render(); }
   else if (a === "cw-sel"){ if (evt.target.closest('[data-act="cw-del"]')) return; state.cwSel = state.cwSel === t.dataset.id ? null : t.dataset.id; render(); }
   else if (a === "cw-del"){ m.events = m.events.filter(e => e.id !== t.dataset.id); m.shots = m.shots.filter(s => s.ev !== t.dataset.id); if (state.cwSel === t.dataset.id) state.cwSel = null; persist(m); render(); }
