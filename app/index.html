@@ -2162,6 +2162,7 @@ function cwLinkPlayer(m, ev, bi){
   // Action indiv correspondante (BUT, TIR, CENTRE, PERTE…) quand elle existe dans la fenêtre indiv
   const key = ev.k === "BUT" ? "BUT" : ev.k; const lab = CW_IND.b.find(b => !b.r && b.t === 1 && b.n === key) || CW_IND.b.find(b => !b.r && b.t === 1 && String(ev.n).toUpperCase().includes(b.n) && b.n.length > 3);
   if (lab) seq.l.push({g:lab.g, t:lab.n});
+  else if (ev.k && ev.k !== "INDIV") seq.l.push({t: ({RECUP:"RECUPERATION", "20M":"ENTREE 20M", POSSESSION:"POSSESSION"})[ev.k] || ev.k}); // pas de bouton indiv équivalent : l'action collective devient l'action du joueur
   m.events.push(seq); toast(`${name} ajouté à ${ev.n} · séquence indiv créée.`, 1800);
 }
 function cwColJumpHTML(){
