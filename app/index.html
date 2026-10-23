@@ -1967,8 +1967,10 @@ function cwPressInner(i){
         const sel = state.indPlayer, pb = CWB[sel];
         if (sel == null || !pb || pb.r){ toast("Choisis d'abord le joueur suivi dans la liste."); return; }
         const last = [...pool].reverse().find(e => e.bi === sel);
-        if (cwOpensSeq(b) || !last){ run(sel, "activate", []); tgt = m.events.find(e => e.id === created[created.length - 1]); }
-        else tgt = (state.cwSel && pool.find(e => e.id === state.cwSel && e.bi === sel)) || last;
+        // Chaque clic crée une séquence ; seule une précision dont le groupe n'est pas encore rempli complète la dernière séquence
+        const fill = last && !cwOpensSeq(b) && b.g && !(last.l || []).some(x => x.g === b.g);
+        if (!fill){ run(sel, "activate", []); tgt = m.events.find(e => e.id === created[created.length - 1]); }
+        else tgt = last;
       } else tgt = (state.cwSel && pool.find(e => e.id === state.cwSel)) || (want && [...pool].reverse().find(e => e.n === want)) || [...pool].reverse().find(e => !cwIsToggle(btnOf(e)));
       if (!tgt){ toast(CWK === "i" ? "Appuie d'abord sur un joueur." : "Aucune action à qui ajouter ce label."); return; }
       const had = (tgt.l || []).some(x => x.g === b.g && x.t === b.n);
