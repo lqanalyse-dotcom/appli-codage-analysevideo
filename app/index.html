@@ -241,6 +241,9 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .cw-stage.app .cw-b .hk{background:rgba(0,0,0,.4);color:#fff;border-radius:4px;padding:0 3px;font:600 8px/1.3 var(--f-body);opacity:1;right:2px;bottom:2px}
 .cw-stage.app .cw-b.on{outline-offset:1px;box-shadow:0 0 0 5px rgba(51,224,122,.3)!important}
 .cw-stage.app .cw-b.tgt{outline-offset:1px}
+.cw-jumps{display:flex;flex-wrap:wrap;gap:6px;max-height:180px;overflow:auto}
+.cw-jump{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:3px 6px;cursor:pointer;font-size:12px;color:var(--ink)}
+.cw-jump:hover{border-color:var(--ink-2)}
 .cw-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 2px 8px}
 .cw-indbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 14px}
 .cw-stage.editing .cw-b.ed{pointer-events:auto;cursor:grab;touch-action:none}
@@ -2103,7 +2106,27 @@ function cwIndBarHTML(){
   const pl = cwPlayers(); const focus = state.indMode === "focus";
   return `<section class="panel c12 cw-indbar"><div class="seg"><button data-act="cw-indmode" data-v="multi" aria-pressed="${!focus}">Pendant le collectif</button><button data-act="cw-indmode" data-v="focus" aria-pressed="${focus}">Joueur suivi</button></div>
     ${focus ? `<label class="hint" for="cw-indpl">Joueur</label><select class="f" id="cw-indpl">${pl.map(b => `<option value="${b.i}" ${state.indPlayer === b.i ? "selected" : ""}>${esc(b.n)}</option>`).join("")}</select>` : `<span class="hint">Tu codes plusieurs joueurs : appuie sur le joueur puis sur ses descripteurs.</span>`}
-    <span style="flex:1"></span><button class="btn sm" data-act="cw-names">Gérer les joueurs</button></section>`;
+    ${focus ? `<label class="hint" for="cw-gomin">Minute</label><input type="text" id="cw-gomin" placeholder="2, 45+1, 67…" style="width:90px"><button class="btn sm" data-act="cw-gomin">Aller</button>` : ""}
+    <span style="flex:1"></span><button class="btn sm" data-act="cw-names">Gérer les joueurs</button></section>
+    ${focus ? cwColJumpHTML() : ""}`;
+}
+// Post-match : retrouver les séquences du codage collectif pour placer le curseur et attribuer des actions au joueur suivi
+function cwColJumpHTML(){
+  const m = current(); const evs = m.events.filter(e => e.live && (e.w || "c") === "c" && !cwIsToggle(btnOf(e))).sort((a,b) => pressTime(a) - pressTime(b));
+  if (!evs.length) return "";
+  const q = (state.colJumpQ || "").toUpperCase();
+  const list = evs.filter(e => !q || e.n.toUpperCase().includes(q)).slice(0, 400);
+  return `<section class="panel c12"><div class="ph"><h2>Séquences du codage collectif</h2><div class="toolbar"><input type="text" id="cw-colq" placeholder="Filtrer (TIR, CENTRE…)" value="${esc(state.colJumpQ || "")}" style="width:180px"><span class="sub">clique une séquence : le curseur s'y place, puis code les actions du joueur suivi</span></div></div>
+    <div class="cw-jumps">${list.map(e => { const bg = btnOf(e).bg || "#666"; return `<button class="cw-jump" data-act="cw-jump" data-t="${pressTime(e)}"><b>${clockLabel(m, pressTime(e))}</b><span class="cw-code" style="background:${bg};color:${inkOn(bg)}">${esc(e.n)}</span></button>`; }).join("")}</div></section>`;
+}
+function minuteToT(m, str){
+  const c = liveClock(m), H = c.halfLen, k2 = k2At(c) ?? H*60;
+  const mm = String(str).trim().match(/^(\d+)\s*(?:\+\s*(\d+))?$/); if (!mm) return null;
+  const a = Number(mm[1]), x = mm[2] ? Number(mm[2]) : 0;
+  if (a < H || (a === H && !x)) return Math.max(0, (a - 1)*60);
+  if (a === H) return H*60 + (x - 1)*60;
+  if (a === 2*H && x) return k2 + H*60 + (x - 1)*60;
+  return k2 + Math.max(0, (a - 1 - H)*60);
 }
 const CWE_LT = {1:"Active", 2:"Coupe", 0:"Exclusif"};
 function cwEditorHTML(){
@@ -2169,7 +2192,7 @@ function renderCodage(m){
   if (CWK === "i" && state.indMode === "focus" && (state.indPlayer == null || !CWB[state.indPlayer] || CWB[state.indPlayer].r || !isPlayerCode(CWB[state.indPlayer]))){ const f = cwPlayers()[0]; state.indPlayer = f ? f.i : null; }
   const c = liveClock(m); const t = nowSec(m);
   const live = m.events.filter(e => e.live && inWin(e));
-  const recent = live.slice(-25).reverse();
+  const recent = (CWK === "i" && state.indMode === "focus" && state.indPlayer != null ? live.filter(e => e.bi === state.indPlayer).sort((a,b) => pressTime(a) - pressTime(b)) : live).slice(-25).reverse();
   const pool = live;
   const tgt = (state.cwSel && pool.find(e => e.id === state.cwSel)) || null;
   const order = [...CWB].sort((a,b) => (a.t === 2 ? 0 : 1) - (b.t === 2 ? 0 : 1) || (a.t === 2 && b.t === 2 ? b.w*b.h - a.w*a.h : 0));
@@ -2355,6 +2378,8 @@ document.addEventListener("click", async (evt) => {
     CW.l.push([ty, i, to]); saveCustom(CWK); render(); }
   else if (a === "cwe-reset") confirmBox(`Revenir à la fenêtre ${CWK === "i" ? "indiv" : "collective"} d'origine ? Tes modifications de cette fenêtre (boutons, liaisons, joueurs) seront perdues.`, "Revenir à l'origine", () => { state.cwEd = null; saveCustom(CWK, true); render(); toast("Fenêtre d'origine rétablie.", 1500); });
   else if (a === "tl-zoom"){ state.tlZoom = clamp((state.tlZoom ?? 2) + Number(t.dataset.z), 0, TL_ZOOMS.length - 1); render(); }
+  else if (a === "cw-jump"){ tlMoveTo(m, Number(t.dataset.t), true); persist(m); render(); toast(`Curseur placé à ${clockLabel(m, Number(t.dataset.t))} : code maintenant les actions du joueur suivi.`, 2500); }
+  else if (a === "cw-gomin"){ const v = $("#cw-gomin").value, tt = minuteToT(m, v); if (tt == null){ toast("Écris une minute, par ex. 2, 45+1 ou 67."); return; } tlMoveTo(m, tt, true); persist(m); render(); toast(`Curseur placé à ${clockLabel(m, tt)}.`, 1800); }
   else if (a === "tl-back"){ const c = liveClock(m); tlMoveTo(m, nowSec(m) - (c.shift || 0)); c.shift = 0; persist(m); render(); toast("Curseur remis à sa place.", 1500); }
   else if (a === "tl-last"){ const live = m.events.filter(e => e.live && inWin(e)); if (!live.length){ toast("Aucune séquence codée."); return; } tlMoveTo(m, Math.max(...live.map(e => e.e ?? e.t)), true); persist(m); render(); }
   else if (a === "tl-follow"){ state.tlFollow = state.tlFollow === false; render(); }
@@ -2387,6 +2412,7 @@ document.addEventListener("pointerdown", (evt) => {
 });
 document.addEventListener("change", (evt) => {
   if (evt.target.dataset && evt.target.dataset.ef && state.cwEdit){ cwEdSet(evt.target.dataset.ef, evt.target.type === "checkbox" ? evt.target.checked : evt.target.value); return; }
+  if (evt.target.id === "cw-colq"){ state.colJumpQ = evt.target.value; render(); return; }
   if (evt.target.id === "cw-indpl"){ state.indPlayer = Number(evt.target.value); state.cwSel = null; render(); return; }
   if (evt.target.id === "cw-half"){ const m = current(); liveClock(m).halfLen = Number(evt.target.value); persist(m); render(); } });
 document.addEventListener("keydown", (evt) => {
