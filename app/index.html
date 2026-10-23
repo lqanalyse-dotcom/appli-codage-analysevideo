@@ -244,6 +244,8 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .half-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px}
 .cw-jumps{display:flex;flex-wrap:wrap;gap:6px;max-height:180px;overflow:auto}
 .cw-jump{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:3px 6px;cursor:pointer;font-size:12px;color:var(--ink)}
+.cw-jump.on{background:var(--navy);color:var(--on-navy);border-color:var(--navy)}
+.cw-jump:disabled{opacity:.5;cursor:default}
 .cw-jump:hover{border-color:var(--ink-2)}
 .cw-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 2px 8px}
 .cw-indbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 14px}
@@ -2000,9 +2002,10 @@ function cwPressInner(i){
         // Joueur suivi : un descripteur d'action (sans groupe) ouvre une nouvelle séquence du joueur, les précisions (groupes) complètent la séquence en cours
         const sel = state.indPlayer, pb = CWB[sel];
         if (sel == null || !pb || pb.r){ toast("Choisis d'abord le joueur suivi dans la liste."); return; }
-        const last = [...pool].reverse().find(e => e.bi === sel);
+        const nowT = nowSec(m); const atCur = [...pool].reverse().find(e => e.bi === sel && e.lk && e.t <= nowT + 1 && (e.e ?? nowT) >= nowT - 1); const last = atCur || [...pool].reverse().find(e => e.bi === sel);
         // Chaque clic crée une séquence ; seule une précision dont le groupe n'est pas encore rempli complète la dernière séquence
-        const fill = last && !cwOpensSeq(b) && b.g && !(last.l || []).some(x => x.g === b.g);
+        // Séquence reliée au collectif sous le curseur : on la complète au lieu d'en recréer une
+        const fill = atCur ? !(atCur.l || []).some(x => x.g === (b.g || undefined) && x.t === b.n) : last && !cwOpensSeq(b) && b.g && !(last.l || []).some(x => x.g === b.g);
         if (!fill){ run(sel, "activate", []); tgt = m.events.find(e => e.id === created[created.length - 1]); }
         else tgt = last;
       } else tgt = (state.cwSel && pool.find(e => e.id === state.cwSel)) || (want && [...pool].reverse().find(e => e.n === want)) || [...pool].reverse().find(e => !cwIsToggle(btnOf(e)));
@@ -2141,6 +2144,26 @@ function cwIndBarHTML(){
     ${focus ? cwColJumpHTML() : ""}`;
 }
 // Post-match : retrouver les séquences du codage collectif pour placer le curseur et attribuer des actions au joueur suivi
+// Lien collectif ↔ indiv : un joueur choisi sur une action collective devient un descripteur (JOUEUR) et crée sa séquence indiv reliée (lk)
+function cwColTarget(m){ const live = m.events.filter(e => e.live && (e.w || "c") === "c" && !cwIsToggle(btnOf(e))); return (state.cwSel && live.find(e => e.id === state.cwSel)) || live[live.length - 1] || null; }
+function cwPlayerStripHTML(m){
+  const ev = cwColTarget(m); const pl = cwPlayers(); if (!pl.length) return "";
+  const linked = new Set(ev ? m.events.filter(e => e.lk === ev.id).map(e => e.bi) : []);
+  return `<section class="panel c12 cw-strip"><div class="ph"><h2>Joueur(s) de l'action</h2><span class="sub">${ev ? `${esc(ev.n)} à ${clockLabel(m, pressTime(ev))} · clique pour ajouter le joueur : il devient un descripteur et sa séquence indiv est créée` : "code une action, puis choisis le joueur"}</span></div>
+    <div class="cw-jumps">${pl.map(b => `<button class="cw-jump ${linked.has(b.i) ? "on" : ""}" data-act="cw-link-pl" data-bi="${b.i}" ${ev ? "" : "disabled"} aria-pressed="${linked.has(b.i)}">${esc(b.n)}${b.k ? ` <span class="hint">${esc(b.k)}</span>` : ""}</button>`).join("")}</div></section>`;
+}
+function cwLinkPlayer(m, ev, bi){
+  const pb = CW_IND.b[bi]; if (!ev || !pb) return;
+  const had = m.events.find(e => e.lk === ev.id && e.bi === bi);
+  const name = playerFromCode(pb.n);
+  if (had){ m.events = m.events.filter(e => e !== had); ev.l = (ev.l || []).filter(x => !(x.g === "JOUEUR" && x.t === name)); toast(`${name} retiré de ${ev.n}.`, 1500); return; }
+  ev.l = ev.l || []; ev.l.push({g:"JOUEUR", t:name});
+  const seq = {id:uid(), n:pb.n, k:"INDIV", tm:"us", t:ev.t, e:ev.e ?? (pressTime(ev) + 8), pt:pressTime(ev), live:1, bi, w:"i", pl:name, lk:ev.id, l:(ev.l || []).filter(x => SEQ_CTX.test(x.g))};
+  // Action indiv correspondante (BUT, TIR, CENTRE, PERTE…) quand elle existe dans la fenêtre indiv
+  const key = ev.k === "BUT" ? "BUT" : ev.k; const lab = CW_IND.b.find(b => !b.r && b.t === 1 && b.n === key) || CW_IND.b.find(b => !b.r && b.t === 1 && String(ev.n).toUpperCase().includes(b.n) && b.n.length > 3);
+  if (lab) seq.l.push({g:lab.g, t:lab.n});
+  m.events.push(seq); toast(`${name} ajouté à ${ev.n} · séquence indiv créée.`, 1800);
+}
 function cwColJumpHTML(){
   const m = current(); const evs = m.events.filter(e => e.live && (e.w || "c") === "c" && !cwIsToggle(btnOf(e))).sort((a,b) => pressTime(a) - pressTime(b));
   if (!evs.length) return "";
@@ -2251,6 +2274,7 @@ function renderCodage(m){
     ${m.sample ? `<p class="hint" style="margin:8px 0 0">Tu es sur le match d'exemple : lancer la timeline ou appuyer sur un bouton crée automatiquement un nouveau match à coder.</p>` : ""}</section>
 
     ${CWK === "i" && !state.cwEdit ? cwIndBarHTML() : ""}
+    ${CWK === "c" && !state.cwEdit ? cwPlayerStripHTML(m, tgt) : ""}
     <section class="panel ${state.cwEdit ? "c8" : "c12"}" style="padding:10px">
       <div class="cw-tools">${state.cwEdit ? `<b>Modification de la fenêtre ${CWK === "i" ? "indiv" : "collective"}</b><span class="hint">Glisse un bouton pour le déplacer, clique pour le modifier. Flèches = déplacer, Suppr = supprimer.</span><span style="flex:1"></span>
         <button class="btn sm" data-act="cwe-add" data-t="0">+ Code</button><button class="btn sm" data-act="cwe-add" data-t="1">+ Label</button><button class="btn sm" data-act="cwe-add" data-t="2">+ Titre / zone</button>${CWK === "i" ? `<button class="btn sm" data-act="cw-names">Joueurs</button>` : ""}<button class="btn sm danger" data-act="cwe-reset">Fenêtre d'origine</button><button class="btn sm primary" data-act="cwe-done">Terminer</button>`
@@ -2414,7 +2438,8 @@ document.addEventListener("click", async (evt) => {
   else if (a === "tl-last"){ const live = m.events.filter(e => e.live && inWin(e)); if (!live.length){ toast("Aucune séquence codée."); return; } tlMoveTo(m, Math.max(...live.map(e => e.e ?? e.t)), true); persist(m); render(); }
   else if (a === "tl-follow"){ state.tlFollow = state.tlFollow === false; render(); }
   else if (a === "cw-sel"){ if (evt.target.closest('[data-act="cw-del"]')) return; state.cwSel = state.cwSel === t.dataset.id ? null : t.dataset.id; render(); }
-  else if (a === "cw-del"){ m.events = m.events.filter(e => e.id !== t.dataset.id); m.shots = m.shots.filter(s => s.ev !== t.dataset.id); if (state.cwSel === t.dataset.id) state.cwSel = null; persist(m); render(); }
+  else if (a === "cw-link-pl"){ cwLinkPlayer(m, cwColTarget(m), Number(t.dataset.bi)); persist(m); render(); }
+  else if (a === "cw-del"){ m.events = m.events.filter(e => e.id !== t.dataset.id && e.lk !== t.dataset.id); m.shots = m.shots.filter(s => s.ev !== t.dataset.id); if (state.cwSel === t.dataset.id) state.cwSel = null; persist(m); render(); }
   else if (a === "cw-skipshot"){ const ev = m.events.find(e => e.id === t.dataset.id); if (ev){ ev.noShot = 1; persist(m); render(); } }
   else if (a === "cw-new"){ const nm = newMatch({title:"Match codé en direct", opponent:""}); state.matches.set(nm.id, nm); state.currentId = nm.id; persist(nm); render(); openMatchModal(nm); }
   else if (a === "cw-xml"){
