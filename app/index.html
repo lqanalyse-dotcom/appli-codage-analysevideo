@@ -7,7 +7,8 @@
 <script src="/shim.js"></script>
 </head>
 <body>
-<title>Pau FC Analyse</title>
+<title>ANALYSE-DATA</title>
+<!-- Pau FC Analyse : repère conservé pour la mise à jour automatique de l'appli bureau -->
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="/fonts/fonts.css">
 <style>
@@ -1433,7 +1434,7 @@ function render(){
   const clubLogo = state.settings.clubLogo ? `<img src="${blobUrl(state.settings.clubLogo)}" alt="">` : "PAU";
   app.innerHTML = `
   <header class="top"><div class="wrap">
-    <div class="brand"><div class="crest">${clubLogo}</div><div>Pau FC<small>Analyse de match</small></div></div>
+    <div class="brand"><div class="crest">${clubLogo}</div><div>Analyse-Data<small>Pau FC · analyse de match</small></div></div>
     <nav class="tabs" role="tablist">${[["collectif","Collectif"],["indiv","Indiv"],["codage","Codage"],["docs","Stockage"]].map(([k,l]) => `<button role="tab" data-act="view" data-v="${k}" aria-selected="${state.view===k}">${l}</button>`).join("")}</nav>
     <div class="spacer"></div>
     <label class="sr" for="match-select" hidden>Match</label>
@@ -1806,7 +1807,7 @@ async function buildPdf(m){
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({orientation:"landscape", unit:"mm", format:"a4", compress:true});
     pdf.addImage(canvas.toDataURL("image/jpeg", .92), "JPEG", 0, 0, 297, 210);
-    pdf.setProperties({title: m.title, creator:"Pau FC Analyse"});
+    pdf.setProperties({title: m.title, creator:"ANALYSE-DATA"});
     return pdf.output("blob");
   } finally { host.remove(); }
 }
