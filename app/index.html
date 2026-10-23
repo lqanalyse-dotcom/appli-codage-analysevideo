@@ -241,6 +241,7 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .cw-stage.app .cw-b .hk{background:rgba(0,0,0,.4);color:#fff;border-radius:4px;padding:0 3px;font:600 8px/1.3 var(--f-body);opacity:1;right:2px;bottom:2px}
 .cw-stage.app .cw-b.on{outline-offset:1px;box-shadow:0 0 0 5px rgba(51,224,122,.3)!important}
 .cw-stage.app .cw-b.tgt{outline-offset:1px}
+.half-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px}
 .cw-jumps{display:flex;flex-wrap:wrap;gap:6px;max-height:180px;overflow:auto}
 .cw-jump{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:3px 6px;cursor:pointer;font-size:12px;color:var(--ink)}
 .cw-jump:hover{border-color:var(--ink-2)}
@@ -732,6 +733,32 @@ function newMatch(o){
     source: o.source || null, sample: !!o.sample, createdAt: o.createdAt || Date.now(), updatedAt: Date.now()
   };
 }
+// Filtre par mi-temps (rapport Collectif / Indiv / PDF) : par défaut cumul des 2 MT
+const HALF_SPLIT = new WeakMap();
+function halfSplit(m){
+  if (HALF_SPLIT.has(m)) return HALF_SPLIT.get(m);
+  // Matchs importés sans label Halftime : la mi-temps = la plus grande pause entre deux actions au milieu du match
+  const ts = m.events.filter(e => !e.live && !e.man && e.t > 0).map(e => e.t).sort((a,b) => a - b); let cut = null;
+  if (ts.length > 4){ const lo = ts[0], hi = ts[ts.length - 1]; let gap = 0;
+    for (let i = 1; i < ts.length; i++){ const mid = (ts[i] + ts[i-1])/2; if (mid < lo + (hi - lo)*.3 || mid > lo + (hi - lo)*.7) continue; if (ts[i] - ts[i-1] > gap){ gap = ts[i] - ts[i-1]; cut = mid; } } }
+  HALF_SPLIT.set(m, cut); return cut;
+}
+function eventHalf(m, e){
+  if (e.h) return e.h;
+  const ht = (e.l || []).find(x => x.g === "Halftime"); if (ht){ const n = parseInt(String(ht.t).replace(/\D/g, "")); if (n === 1 || n === 2) return n; }
+  if (e.live) return matchTime(m, pressTime(e)).half;
+  if (e.man || !(e.t > 0)) return null;
+  const cut = halfSplit(m); return cut == null ? null : e.t < cut ? 1 : 2;
+}
+function shotHalf(m, s){
+  if (s.ev){ const e = m.events.find(x => x.id === s.ev); if (e) return eventHalf(m, e); }
+  return s.min == null ? null : s.min > ((m.live && m.live.halfLen) || 45) ? 2 : 1;
+}
+function halfView(m){
+  const h = state.half; if (!h || !m) return m;
+  return {...m, events: m.events.filter(e => eventHalf(m, e) === h), shots: m.shots.filter(s => shotHalf(m, s) === h)};
+}
+function halfSegHTML(){ const h = state.half || 0; return `<div class="seg half-seg"><button data-act="half" data-v="0" aria-pressed="${!h}">Match entier</button><button data-act="half" data-v="1" aria-pressed="${h === 1}">Mi-temps 1</button><button data-act="half" data-v="2" aria-pressed="${h === 2}">Mi-temps 2</button></div>`; }
 function teamEvents(m){ return m.events.filter(e => !e.pl); }
 function count(m, k, tm, pred){ return teamEvents(m).filter(e => e.k === k && e.tm === tm && (!pred || pred(e))).length; }
 function linkedEventIds(m){ return new Set(m.shots.map(s => s.ev).filter(Boolean)); }
@@ -1241,6 +1268,7 @@ function sampleNote(m){
   return `<div class="sample-note"><span><strong>Match d'exemple, données fictives.</strong> Importe ton XML LongoMatch/Nacsport/Sportscode, un Excel ou un CSV pour voir tes vrais chiffres.</span><button class="btn primary" data-act="import">Importer un fichier</button></div>`;
 }
 
+function halfBar(){ return `<div class="half-bar">${halfSegHTML()}${state.half ? `<span class="hint">Affichage limité à la ${state.half === 1 ? "1re" : "2e"} mi-temps. Les statistiques saisies à la main ou importées en total restent celles du match entier.</span>` : ""}</div>`; }
 function renderCollectif(m){
   const st = teamStats(m), opp = m.oppColor || "#d7263d";
   const zr = zoneCounts(m, "recup"), zp = zoneCounts(m, "perte");
@@ -1355,7 +1383,7 @@ function renderIndiv(m){
   if (!state.player) return `${sampleNote(m)}<section class="panel"><div class="ph"><h2>Joueurs</h2>${scopeSeg}</div><div class="empty">Aucun joueur détecté dans ce match. Les joueurs viennent des tags joueur de LongoMatch, d'une colonne « Joueur » dans un Excel/CSV, ou du tireur saisi sur un tir.</div></section>`;
   let ps;
   if (state.scope === "season"){
-    const list = [...state.matches.values()].filter(x => (!x.sample || x.id === m.id) && playerList(x).includes(state.player)).map(x => playerStats(x, state.player));
+    const list = [...state.matches.values()].filter(x => (!x.sample || x.id === m.id) && playerList(x).includes(state.player)).map(x => playerStats(halfView(x), state.player));
     ps = mergeStats(list);
   } else ps = {...playerStats(m, state.player), matches:1};
   const pkey = slug(state.player), pdoc = state.players[pkey] || {};
@@ -1446,7 +1474,7 @@ function render(){
     ${state.view !== "docs" ? `<button class="btn primary" data-act="pdf">PDF une page</button>` : ""}
   </div></header>
   ${state.view !== "docs" ? headerHTML(m, st) : ""}
-  <main class="wrap">${state.view === "collectif" ? renderCollectif(m) : state.view === "indiv" ? renderIndiv(m) : state.view === "codage" ? renderCodage(m) : renderDocs()}</main>`;
+  <main class="wrap">${state.view === "collectif" ? halfBar() + renderCollectif(halfView(m)) : state.view === "indiv" ? halfBar() + renderIndiv(halfView(m)) : state.view === "codage" ? renderCodage(m) : renderDocs()}</main>`;
   if (state.view === "codage"){ fitCodage(); tlFollow(); }
   window.scrollTo(0, scrollY);
   if (focusId){ const f = document.getElementById(focusId); if (f && f.focus) { f.focus({preventScroll:true}); if (f.setSelectionRange && f.type === "text") { const n = f.value.length; f.setSelectionRange(n,n); } } }
@@ -1550,6 +1578,7 @@ document.addEventListener("click", async (evt) => {
     case "period": state.period = t.dataset.k; render(); break;
     case "player": state.player = t.dataset.p; render(); break;
     case "scope": state.scope = t.dataset.v; render(); break;
+    case "half": state.half = Number(t.dataset.v) || 0; render(); break;
     case "photo": pickImage(async (file) => { const up = await uploadImage(file); if (!up) return; await S.db.collection("players").doc(slug(state.player)).set({name:state.player, photo:up.id}); toast("Photo enregistrée."); }); break;
     case "club-logo": pickImage(async (file) => { const up = await uploadImage(file); if (!up) return; await S.db.doc("settings/app").set({...state.settings, clubLogo:up.id}); toast("Logo enregistré."); }); break;
     case "doc-dl": { const d = state.docs.find(x => x.id === t.dataset.id); if (!d) break; try { const bytes = await fetchDocBytes(d); const name = DL_OK.has(d.ext) ? d.name : d.name + ".txt"; const ok = await saveFile(name, bytes); if (ok && !DL_OK.has(d.ext)) toast("Ce format est enregistré avec .txt à la fin : renomme-le pour retrouver le ." + d.ext + "."); } catch (e){ toast(e.message); } break; }
@@ -1740,13 +1769,14 @@ function openImportModal(results, fromDocId){
    Rapport PDF une page (A4 paysage)
    ========================================================= */
 function reportHTML(m){
+  m = halfView(m);
   const st = teamStats(m), opp = m.oppColor || "#d7263d";
   const when = [m.competition, m.date ? new Date(m.date).toLocaleDateString("fr-FR") : ""].filter(Boolean).join(" · ");
   const head = (left, center, right) => `<div class="rh"><div>${left}</div><div>${center}</div><div style="text-align:right">${right}</div></div>`;
-  const foot = `<div class="rf"><span>Pau FC · Cellule analyse</span><span>${esc(m.title)}${m.sample ? " · données fictives" : ""}</span><span>Généré le ${new Date().toLocaleDateString("fr-FR")}</span></div>`;
+  const foot = `<div class="rf"><span>Pau FC · Cellule analyse</span><span>${esc(m.title)}${state.half ? ` · ${state.half === 1 ? "1re" : "2e"} mi-temps` : ""}${m.sample ? " · données fictives" : ""}</span><span>Généré le ${new Date().toLocaleDateString("fr-FR")}</span></div>`;
   const d = (label, a, b, f) => { const tot = a+b, pa = tot ? a/tot*100 : 50; return `<div class="d"><b>${f(a)}</b><div><div class="l">${esc(label)}</div><div class="bb"><i style="display:block;width:${tot?pa:0}%;background:#f6c400"></i><i style="display:block;width:${tot?100-pa:0}%;background:${opp}"></i></div></div><b class="r">${f(b)}</b></div>`; };
   if (state.view === "indiv" && state.player){
-    const ps = state.scope === "season" ? mergeStats([...state.matches.values()].filter(x => (!x.sample || x.id === m.id) && playerList(x).includes(state.player)).map(x => playerStats(x, state.player))) : playerStats(m, state.player);
+    const ps = state.scope === "season" ? mergeStats([...state.matches.values()].filter(x => (!x.sample || x.id === m.id) && playerList(x).includes(state.player)).map(x => playerStats(halfView(x), state.player))) : playerStats(m, state.player);
     const actions = Object.entries(ps.byAction).sort((a,b) => b[1]-a[1]).slice(0,14);
     return `<div class="rpt">${head(`<div class="t">${esc(state.player)}</div><div class="m">Pau FC · fiche individuelle</div>`,
       `<div class="sc">${fmt1(ps.xg)}</div><div class="sx">xG · ${ps.shots.length} tirs · ${ps.goals} but${ps.goals>1?"s":""}</div>`,
