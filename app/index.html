@@ -242,6 +242,9 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .cw-stage.app .cw-b.on{outline-offset:1px;box-shadow:0 0 0 5px rgba(51,224,122,.3)!important}
 .cw-stage.app .cw-b.tgt{outline-offset:1px}
 .half-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px}
+.cw-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 10px}
+.cw-kpis div{background:var(--surface-2);border-radius:8px;padding:6px;text-align:center}
+.cw-kpis b{display:block;font:800 20px/1 var(--f-display)}.cw-kpis span{font-size:11px;color:var(--ink-2)}
 .cw-jumps{display:flex;flex-wrap:wrap;gap:6px;max-height:180px;overflow:auto}
 .cw-jump{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:3px 6px;cursor:pointer;font-size:12px;color:var(--ink)}
 .cw-jump.on{background:var(--navy);color:var(--on-navy);border-color:var(--navy)}
@@ -837,6 +840,9 @@ function playerList(m){
   teamEvents(m).forEach(e => (e.p||[]).forEach(p => s.add(p)));
   return [...s].filter(Boolean).sort((a,b) => a.localeCompare(b,"fr"));
 }
+// Effectif : joueurs de la fenêtre indiv + joueurs présents dans le match
+function roster(m){ const s = new Set(playerList(m)); try { cwPlayers().forEach(b => s.add(playerFromCode(b.n))); } catch {} return [...s].filter(Boolean).sort((a,b) => a.localeCompare(b,"fr")); }
+function playerOptions(m, cur){ const r = roster(m); if (cur && !r.includes(cur)) r.unshift(cur); return `<option value="">— choisir le joueur —</option>` + r.map(p => `<option value="${esc(p)}" ${p === cur ? "selected" : ""}>${esc(p)}</option>`).join(""); }
 function playerStats(m, name){
   const up = name.toUpperCase();
   const tags = m.events.filter(e => e.pl && e.pl.toUpperCase() === up);
@@ -1036,7 +1042,7 @@ async function saveFile(filename, data){
   if (!S.downloads){
     if (!window.claude){ const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data])); const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000); return true; }
     toast("Le téléchargement n'est pas disponible dans cette vue. Ouvre l'application sur claude.ai."); return false; }
-  try { await S.downloads.save({filename, data}); return true; }
+  try { const r = await S.downloads.save({filename, data}); if (r && r.path) toast("Enregistré dans " + r.path, 6000); return true; }
   catch (e){ if (e && e.code !== "declined") toast(e && e.code === "rejected_extension" ? "Ce format ne peut pas être téléchargé ici." : "Téléchargement impossible : " + (e && e.message || "erreur inconnue")); return false; }
 }
 
@@ -1364,8 +1370,7 @@ function shotEditorHTML(m){
     <div class="row"><span class="l">Adversaires entre ballon et but</span><div class="stepper"><button data-act="opp" data-d="-1" aria-label="Moins">−</button><span>${d.opp}</span><button data-act="opp" data-d="1" aria-label="Plus">+</button></div><span class="hint">gardien compris</span></div>
     <div class="row"><span class="l">Situation</span>${segBtns("sit", SIT)}</div>
     <div class="row"><span class="l">Résultat</span>${segBtns("res", RES)}</div>
-    <div class="row"><label class="l" for="draft-p">Tireur</label><input type="text" id="draft-p" list="players-dl" value="${esc(d.p||"")}" placeholder="Nom du joueur" data-act="draft-input" data-f="p">
-      <datalist id="players-dl">${players.map(p => `<option value="${esc(p)}">`).join("")}</datalist>
+    <div class="row"><label class="l" for="draft-p">Tireur</label><select class="f" id="draft-p" data-act="draft-input" data-f="p">${playerOptions(m, d.p || "")}</select>
       <label class="l" for="draft-min" style="min-width:auto">Minute</label><input type="number" id="draft-min" min="0" max="130" value="${d.min ?? ""}" data-act="draft-input" data-f="min"></div>
     <div class="row"><span class="l">xG</span><span class="xg-live">${live != null ? fmt1(live) : "–"}</span>${sel ? `<button class="btn sm danger" data-act="shot-del">Supprimer ce tir</button><button class="btn sm" data-act="shot-desel">Nouveau tir</button>` : ""}</div>
   </div>`;
@@ -1665,7 +1670,7 @@ function pickImage(cb){
 async function uploadImage(file){
   if (!S.assets) { toast("L'envoi d'images fonctionne dans l'application ouverte sur claude.ai."); return null; }
   // Redimensionne à 400 px max avant l'envoi
-  const img = await createImageBitmap(file);
+  let img; try { img = await createImageBitmap(file); } catch { img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error("Format d'image non lu : utilise un JPG ou un PNG.")); i.src = URL.createObjectURL(file); }); }
   const sc = Math.min(1, 400/Math.max(img.width, img.height));
   const c = document.createElement("canvas"); c.width = Math.round(img.width*sc); c.height = Math.round(img.height*sc);
   c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
@@ -1822,7 +1827,7 @@ function openPdfPreview(){
     try {
       const blob = await buildPdf(m);
       const name = state.view === "indiv" ? `${slug(state.player)}-${slug(m.opponent||"match")}.pdf` : `pau-fc-${slug(m.opponent||"match")}${m.date ? "-" + m.date : ""}.pdf`;
-      if (await saveFile(name, blob)) toast("PDF prêt.");
+      if (await saveFile(name, blob) && !window.__NATIVE__) toast("PDF prêt.");
     } catch (err){ toast("Le PDF n'a pas pu être généré : " + (err.message || "erreur")); }
     btn.disabled = false; btn.textContent = "Télécharger le PDF";
   };
@@ -2298,7 +2303,7 @@ function renderCodage(m){
           <div class="chips">${(e.l || []).filter(x => !/^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/.test(x.g)).map(x => `<span class="chip">${esc(x.g ? x.g + " : " : "")}${esc(x.t)}</span>`).join("")}</div></div>
         <button class="btn sm danger" data-act="cw-del" data-id="${e.id}" aria-label="Supprimer">×</button></div>`).join("")}</div>` : `<div class="empty">Aucune action codée. Lance le chrono puis clique sur les boutons ou utilise les raccourcis.</div>`}
     </section>
-    ${CWK === "i" ? `<section class="panel c5"><div class="ph"><h2>Bilan indiv du match</h2><span class="sub">clique un joueur pour sa fiche</span></div>${indivSummaryHTML(m)}</section>` : `<section class="panel c5"><div class="ph"><h2>${isLoc ? (toPlace.k === "RECUP" ? "Position de la récupération" : "Position de la perte") : "Position des tirs"}</h2><span class="sub">${isLoc ? "terrain 18 zones" : "pour le xG"}</span></div>
+    ${CWK === "i" ? `<section class="panel c5"><div class="ph"><h2>Bilan indiv du match</h2><span class="sub">clique un joueur pour sa fiche</span></div>${indivSummaryHTML(m)}${cwLiveIndHTML(m)}</section>` : `<section class="panel c5"><div class="ph"><h2>${isLoc ? (toPlace.k === "RECUP" ? "Position de la récupération" : "Position de la perte") : "Position des tirs"}</h2><span class="sub">${isLoc ? "terrain 18 zones" : "pour le xG"}</span></div>
       ${isLoc ? `<p style="margin:0 0 8px"><span class="cw-code" style="background:${btnColor(toPlace)};color:${inkOn(btnColor(toPlace))}">${esc(toPlace.n)}</span> à ${mmss(pressTime(toPlace))} : clique l'endroit exact${toPlace.b ? ` (zone codée : ${esc(toPlace.b)})` : ""}. Pau attaque vers la droite.</p>
         <div style="margin-top:4px">${locPickerSVG(toPlace)}</div>
         <p class="hint"><button class="btn sm" data-act="cw-skipshot" data-id="${toPlace.id}">Ne pas placer</button> Tu peux aussi placer plus tard depuis Collectif.</p>`
@@ -2306,7 +2311,7 @@ function renderCodage(m){
         <div class="editor" style="margin-top:0">
           <div class="row"><span class="l">Surface</span><div class="seg">${Object.entries(BODY).map(([k,l]) => `<button data-act="draft" data-f="body" data-v="${k}" aria-pressed="${state.draft.body===k}">${l}</button>`).join("")}</div></div>
           <div class="row"><span class="l">Adversaires devant</span><div class="stepper"><button data-act="opp" data-d="-1" aria-label="Moins">−</button><span>${state.draft.opp}</span><button data-act="opp" data-d="1" aria-label="Plus">+</button></div><span class="hint">gardien compris</span></div>
-          ${(() => { const d = cwShotChoice(m, toPlace); return `<div class="row"><span class="l">Résultat</span><div class="seg">${Object.entries(RES).map(([k,l]) => `<button data-act="cw-shotf" data-f="res" data-id="${toPlace.id}" data-v="${k}" aria-pressed="${d.res===k}">${l}</button>`).join("")}</div></div>
+          ${(() => { const d = cwShotChoice(m, toPlace); return `${toPlace.tm === "us" ? `<div class="row"><label class="l" for="cw-shotp">Tireur</label><select class="f" id="cw-shotp" data-id="${toPlace.id}">${playerOptions(m, d.p || "")}</select></div>` : ""}<div class="row"><span class="l">Résultat</span><div class="seg">${Object.entries(RES).map(([k,l]) => `<button data-act="cw-shotf" data-f="res" data-id="${toPlace.id}" data-v="${k}" aria-pressed="${d.res===k}">${l}</button>`).join("")}</div></div>
           <div class="row"><span class="l">Départ</span><div class="seg">${Object.entries(SIT).map(([k,l]) => `<button data-act="cw-shotf" data-f="sit" data-id="${toPlace.id}" data-v="${k}" aria-pressed="${d.sit===k}">${l}</button>`).join("")}</div></div>`; })()}
         </div>
         <div class="half-map" style="margin-top:8px;max-width:280px">${svgOpen(`${L/2-1} -2 ${L/2+3} ${W+4}`, "editing", `data-role="cwshot" data-ev="${toPlace.id}"`)}${pitchLines()}</svg></div>
@@ -2319,7 +2324,8 @@ function renderCodage(m){
 // Terrain 18 zones pour placer une récupération / perte ; la bande de profondeur codée est surlignée
 function cwShotChoice(m, ev){
   const d = shotDefaultsFromEvent(m, ev); const o = state.cwShot && state.cwShot.id === ev.id ? state.cwShot : {};
-  return {...d, res: o.res || d.res || "cadre", sit: o.sit || d.sit || "jeu"};
+  const jl = (ev.l || []).find(x => x.g === "JOUEUR");
+  return {...d, res: o.res || d.res || "cadre", sit: o.sit || d.sit || "jeu", p: o.p != null ? o.p : jl ? jl.t : ""};
 }
 function locPickerSVG(ev){
   const band = {"BASSE":0, "MED BASSE":1, "MED HAUTE":2, "HAUTE":3}[ev.b];
@@ -2328,6 +2334,16 @@ function locPickerSVG(ev){
   const hl = band != null ? `<rect x="${band*L/4}" y="0" width="${L/4}" height="${W}" fill="var(--pau)" fill-opacity=".18"/>` : "";
   return `${svgOpen(`-2 -6 ${L+4} ${W+8}`, "editing", `data-role="cwloc" data-ev="${ev.id}"`)}${arrowDefs()}${pitchLines()}${hl}${g}
     <line x1="${L*0.62}" y1="-3" x2="${L*0.82}" y2="-3" stroke="var(--ink-2)" stroke-width=".5" marker-end="url(#arr)"/><text x="${L*0.6}" y="-1.8" text-anchor="end" font-size="3.6" fill="var(--ink-2)">SENS DU JEU PAU</text></svg>`;
+}
+// Stats simples en direct du joueur suivi (ou du dernier joueur codé)
+function cwLiveIndHTML(m){
+  const evs = m.events.filter(e => e.w === "i" && e.pl);
+  const pb = state.indMode === "focus" && state.indPlayer != null ? CW_IND.b[state.indPlayer] : null;
+  const name = pb ? playerFromCode(pb.n) : (evs[evs.length - 1] || {}).pl; if (!name) return "";
+  const ps = playerStats(m, name); const recups = ps.recups + ((ps.ind.RECUPERATION || {}).n || 0) + ((ps.ind.INTERCEPTION || {}).n || 0);
+  return `<div style="margin-top:14px"><div class="eyebrow">${esc(name)} · en direct</div>
+    <div class="cw-kpis"><div><b>${ps.indN}</b><span>séquences</span></div><div><b>${recups}</b><span>récup.</span></div><div><b>${ps.shots.length}</b><span>tirs</span></div><div><b>${fmt1(ps.xg)}</b><span>xG</span></div></div>
+    ${Object.keys(ps.ind).length ? indivTableHTML(ps.ind) : `<div class="hint">Pas encore d'action codée pour ce joueur.</div>`}</div>`;
 }
 function indivSummaryHTML(m){
   const by = {}; m.events.filter(e => e.w === "i" && e.pl).forEach(e => { const r = by[e.pl] = by[e.pl] || {n:0, ok:0, ko:0}; r.n++; Object.values(indivBreakdown([e])).forEach(x => { r.ok += x.ok; r.ko += x.ko; }); });
@@ -2405,7 +2421,7 @@ document.addEventListener("click", async (evt) => {
     const m = current(); const ev = m.events.find(e => e.id === svg.dataset.ev); if (!ev) return;
     const p = svgPoint(svg, evt); const x = clamp(p.x, L/2, L), y = clamp(p.y, 0, W);
     const d = cwShotChoice(m, ev); state.cwShot = null;
-    const shot = {id:uid(), tm:ev.tm, x, y, body:state.draft.body, opp:state.draft.opp, sit:d.sit, res:d.res, p:"", min:d.min ?? null, ev:ev.id};
+    const shot = {id:uid(), tm:ev.tm, x, y, body:state.draft.body, opp:state.draft.opp, sit:d.sit, res:d.res, p:d.p || "", min:d.min ?? null, ev:ev.id};
     if (shot.sit === "penalty"){ shot.x = L - 11; shot.y = W/2; }
     m.shots.push(shot); persist(m); render(); toast(`Tir placé · xG ${fmt1(xgOf(shot))}`, 1800); return;
   }
@@ -2468,6 +2484,7 @@ document.addEventListener("pointerdown", (evt) => {
 });
 document.addEventListener("change", (evt) => {
   if (evt.target.dataset && evt.target.dataset.ef && state.cwEdit){ cwEdSet(evt.target.dataset.ef, evt.target.type === "checkbox" ? evt.target.checked : evt.target.value); return; }
+  if (evt.target.id === "cw-shotp"){ state.cwShot = {...(state.cwShot && state.cwShot.id === evt.target.dataset.id ? state.cwShot : {}), id:evt.target.dataset.id, p:evt.target.value}; return; }
   if (evt.target.id === "cw-colq"){ state.colJumpQ = evt.target.value; render(); return; }
   if (evt.target.id === "cw-indpl"){ state.indPlayer = Number(evt.target.value); state.cwSel = null; render(); return; }
   if (evt.target.id === "cw-half"){ const m = current(); liveClock(m).halfLen = Number(evt.target.value); persist(m); render(); } });
