@@ -242,6 +242,9 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .cw-stage.app .cw-b.on{outline-offset:1px;box-shadow:0 0 0 5px rgba(51,224,122,.3)!important}
 .cw-stage.app .cw-b.tgt{outline-offset:1px}
 .half-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px}
+.tl-mark{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--good);z-index:2;pointer-events:none}
+.tl-mark span{position:absolute;top:24px;left:3px;background:var(--good);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap}
+.cw-video{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
 .tl-selbar{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border-radius:8px;padding:3px 8px}
 #cw-tl .tl-bar{touch-action:none}
 .cw-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 10px}
@@ -2104,10 +2107,14 @@ function timelineHTML(m){
     return `<div class="tl-row"><div class="tl-name" title="${esc(n)}"><i style="background:${bg}"></i>${esc(n)} <span class="hint">${evs.length}</span></div><div class="tl-track" style="width:${width}px">${evs.map(e => {
       const end = e.e ?? now; const lbl = (e.l || []).filter(x => !/^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/.test(x.g)).map(x => x.t).join(", ");
       return `<button type="button" class="tl-bar ${e.e == null ? "act" : ""} ${state.cwSel === e.id || (state.tlSel || []).includes(e.id) ? "sel" : ""}" data-act="cw-sel" data-id="${e.id}" style="left:${e.t*sc}px;width:${Math.max(3,(end - e.t)*sc)}px;background-color:${bg}" title="${esc(n)} · ${mmss(e.t)}–${mmss(end)}${lbl ? " · " + esc(lbl) : ""}"></button>`; }).join("")}</div></div>`; }).join("");
-  return `<div class="tl-content" style="width:${190 + width}px"><div class="tl-axis">${axis}</div>${rows || `<div class="empty" style="margin:12px;position:sticky;left:12px;max-width:520px">La timeline se remplit dès que tu appuies sur un bouton.</div>`}<div class="tl-head" id="tl-head" style="left:${190 + now*sc}px" title="Glisse le curseur pour le déplacer"><span class="tl-knob"></span></div></div>`;
+  return `<div class="tl-content" style="width:${190 + width}px"><div class="tl-axis">${axis}</div>${rows || `<div class="empty" style="margin:12px;position:sticky;left:12px;max-width:520px">La timeline se remplit dès que tu appuies sur un bouton.</div>`}${tlMarkers(m, sc)}<div class="tl-head" id="tl-head" style="left:${190 + now*sc}px" title="Glisse le curseur pour le déplacer"><span class="tl-knob"></span></div></div>`;
 }
 // Curseur de la timeline déplaçable à la main ; shift = décalage cumulé, annulable avec « Remettre le curseur »
 // Déplacement de séquences : sélection multiple (Maj / Ctrl + clic), glisser à la souris / au pad, flèches, ou décalage en secondes
+function tlSelect(id, add){ let sel = state.tlSel || [];
+  if (add){ if (state.cwSel && !sel.includes(state.cwSel)) sel = [...sel, state.cwSel]; sel = sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]; state.cwSel = sel.includes(state.cwSel) ? state.cwSel : sel[sel.length - 1] || null; }
+  else { const off = state.cwSel === id && sel.length <= 1; sel = off ? [] : [id]; state.cwSel = off ? null : id; }
+  state.tlSel = sel; render(); }
 function tlSelIds(m){ const ids = new Set(state.tlSel || []); if (state.cwSel) ids.add(state.cwSel); return [...ids].filter(id => m.events.some(e => e.id === id)); }
 function tlShift(m, ids, d){
   const set = new Set(ids); m.events.forEach(e => { if (e.lk && set.has(e.lk)) set.add(e.id); });
@@ -2122,7 +2129,8 @@ document.addEventListener("pointerdown", (evt) => {
   const x0 = evt.clientX; let moved = false; state.tlDrag = true;
   const mv = e => { const dx = e.clientX - x0; if (!moved && Math.abs(dx) < 4) return; moved = true; els.forEach(([el, l]) => { el.style.left = (l + dx) + "px"; el.classList.add("sel"); }); };
   const up = e => { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); state.tlDrag = false;
-    if (!moved) return; state.tlDragged = true; setTimeout(() => { state.tlDragged = false; }, 300);
+    if (!moved){ state.tlDragged = true; setTimeout(() => { state.tlDragged = false; }, 300); tlSelect(id, e.shiftKey || e.ctrlKey || e.metaKey); return; }
+    state.tlDragged = true; setTimeout(() => { state.tlDragged = false; }, 300);
     const d = Math.round((e.clientX - x0)/sc*10)/10; if (!(ids.includes(state.cwSel))) { state.tlSel = ids; state.cwSel = ids[0]; } tlShift(m, ids, d); persist(m); render(); };
   document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
 });
@@ -2140,6 +2148,8 @@ document.addEventListener("pointerdown", (evt) => {
     render(); };
   mv(evt); document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
 });
+function tlMarkers(m, sc){ const c = liveClock(m), k2 = k2At(c); const mk = (t, txt) => `<div class="tl-mark" style="left:${190 + t*sc}px"><span>${txt}</span></div>`;
+  return (nowSec(m) > 0 || m.events.some(e => e.live) ? mk(0, "▶ 1re MT") : "") + (k2 != null ? mk(k2, "▶ 2e MT") : ""); }
 function tlFollow(){
   const w = $("#cw-tl"), h = $("#tl-head"); if (!w || !h || state.tlFollow === false) return;
   const x = parseFloat(h.style.left); if (x > w.scrollLeft + w.clientWidth - 80 || x < w.scrollLeft + 190) w.scrollLeft = Math.max(0, x - w.clientWidth*.6);
@@ -2293,8 +2303,9 @@ function renderCodage(m){
         <label class="hint" for="cw-half">Mi-temps</label><select class="f" id="cw-half" data-act="cw-half">${[45,40,35,30].map(v => `<option value="${v}" ${c.halfLen===v?"selected":""}>${v} min</option>`).join("")}</select>
       </div>
       <div class="spacer" style="flex:1"></div>
-      <div class="toolbar"><button class="btn" data-act="cw-stopall" title="Touche TAB">Tout couper (TAB)</button><button class="btn" data-act="cw-undo" title="Ctrl+Z">Annuler la dernière action</button><select class="f" id="cw-xmlhalf" aria-label="Partie du match à exporter"><option value="0" ${!state.xmlHalf ? "selected" : ""}>Export : match entier</option><option value="1" ${state.xmlHalf === 1 ? "selected" : ""}>Export : mi-temps 1</option><option value="2" ${state.xmlHalf === 2 ? "selected" : ""}>Export : mi-temps 2</option></select><button class="btn" data-act="cw-xml">Exporter XML Sportscode</button><button class="btn" data-act="cw-xml" data-fmt="lm" title="Une ligne par code, labels en étiquettes">Exporter XML LongoMatch</button></div>
+      <div class="toolbar"><button class="btn" data-act="cw-stopall" title="Touche TAB">Tout couper (TAB)</button><button class="btn" data-act="cw-undo" title="Ctrl+Z">Annuler la dernière action</button><button class="btn" data-act="cw-video" aria-pressed="${!!state.cwVideo}">Calage vidéo</button><select class="f" id="cw-xmlhalf" aria-label="Partie du match à exporter"><option value="0" ${!state.xmlHalf ? "selected" : ""}>Export : match entier</option><option value="1" ${state.xmlHalf === 1 ? "selected" : ""}>Export : mi-temps 1</option><option value="2" ${state.xmlHalf === 2 ? "selected" : ""}>Export : mi-temps 2</option></select><button class="btn" data-act="cw-xml">Exporter XML Sportscode</button><button class="btn" data-act="cw-xml" data-fmt="lm" title="Une ligne par code, labels en étiquettes">Exporter XML LongoMatch</button></div>
     </div>
+    ${state.cwVideo ? `<div class="cw-video"><b>Calage sur ta vidéo</b><label class="hint" for="cw-v1">Coup d'envoi 1re MT à</label><input type="text" id="cw-v1" placeholder="15:00" value="${m.video && m.video.v1 != null ? mmss(m.video.v1) : ""}" style="width:80px"><label class="hint" for="cw-v2">Coup d'envoi 2e MT à</label><input type="text" id="cw-v2" placeholder="75:30" value="${m.video && m.video.v2 != null ? mmss(m.video.v2) : ""}" style="width:80px"><span class="hint">(temps dans la vidéo source, mm:ss). Les exports XML sont recalés : la 1re MT part du 1er temps, la 2e MT du 2e, la pause de mi-temps est sautée.</span></div>` : ""}
     <div class="cw-ctx" style="margin-top:10px">${ctx.map(([g,v]) => `<span class="pill">${esc(g)} : ${esc(v)}</span>`).join("")}<button class="btn sm" data-act="edit-match">Modifier</button>
       <span class="hint">Ces labels sont ajoutés à chaque action, comme dans ta fenêtre (plus Halftime, QT et Minute).</span></div>
     ${m.sample ? `<p class="hint" style="margin:8px 0 0">Tu es sur le match d'exemple : lancer la timeline ou appuyer sur un bouton crée automatiquement un nouveau match à coder.</p>` : ""}</section>
@@ -2420,6 +2431,14 @@ setInterval(() => {
   const tl = $("#cw-tl"); if (tl && !state.tlDrag && (state.tlTick = (state.tlTick || 0) + 1) % 2 === 0){ const sl = tl.scrollLeft, st = tl.scrollTop; tl.innerHTML = timelineHTML(m); tl.scrollLeft = sl; tl.scrollTop = st; tlFollow(); }
 }, 500);
 // Export LongoMatch : le nom de l'action = le code seul (une ligne par code) ; les descripteurs vont seulement dans la remarque (LongoMatch les colle sinon au nom)
+// Calage vidéo : temps du coup d'envoi de chaque MT dans la vidéo source ; la pause de mi-temps est « gelée » dans l'appli
+function vidT(m, t){
+  const v = m.video || {}; if (v.v1 == null && v.v2 == null) return t;
+  const k2 = k2At(liveClock(m));
+  if (k2 != null && t >= k2) return (v.v2 ?? ((v.v1 || 0) + k2)) + (t - k2);
+  return (v.v1 || 0) + t;
+}
+const parseMmss = str => { const p = String(str || "").trim().split(":").map(Number); if (!p.length || p.some(x => !isFinite(x))) return null; return p.reduce((a, x) => a*60 + x, 0); };
 function exportLongoMatchXML(m){
   const evs = m.events.filter(e => (!e.pl || e.w === "i") && (e.e != null || e.live) && (!state.xmlHalf || eventHalf(m, e) === state.xmlHalf)).slice().sort((a,b) => a.t - b.t);
   const x = s => esc(String(s));
@@ -2430,7 +2449,7 @@ function exportLongoMatchXML(m){
     const labs = (e.l || []).filter(l => !SEQ_CTX.test(l.g)).map(l => l.t);
     const half = (e.l || []).find(l => l.g === "Halftime"); if (half) labs.push(half.t);
     const name = e.w === "i" && e.pl ? e.n : e.n;
-    out += `\t\t<action\n\t\t\tid="${id()}"\n\t\t\tactionName="${x(name)}"\n\t\t\tactionType="${String(e.n).trim().startsWith("*") ? "Defending" : e.w === "i" ? "Other" : "Attacking"}"\n\t\t\tisBad="False"\n\t\t\tisFavorite="False"\n\t\t\tisGood="False"\n\t\t\tremark="${x(labs.join(" / "))}"\n\t\t\tstartTime="${tc(e.t)}"\n\t\t\tendTime="${tc(e.e ?? nowSec(m))}">\n\t\t\t<players />\n\t\t\t<drawingelements />\n\t\t</action>\n`;
+    out += `\t\t<action\n\t\t\tid="${id()}"\n\t\t\tactionName="${x(name)}"\n\t\t\tactionType="${String(e.n).trim().startsWith("*") ? "Defending" : e.w === "i" ? "Other" : "Attacking"}"\n\t\t\tisBad="False"\n\t\t\tisFavorite="False"\n\t\t\tisGood="False"\n\t\t\tremark="${x(labs.join(" / "))}"\n\t\t\tstartTime="${tc(vidT(m, e.t))}"\n\t\t\tendTime="${tc(vidT(m, e.e ?? nowSec(m)))}">\n\t\t\t<players />\n\t\t\t<drawingelements />\n\t\t</action>\n`;
   });
   return out + `\t</actions>\n</analysis>\n`;
 }
@@ -2440,7 +2459,7 @@ function exportSportscodeXML(m){
   const colorOf = n => { const b = CW_COL.b.find(b => b.n === n) || CW_IND.b.find(b => b.n === n); const h = (b && b.bg) || "#808080"; return [1,3,5].map(i => Math.round(parseInt(h.substr(i,2),16)/255*65535)); };
   const codes = [...new Set(evs.map(e => e.n))];
   let out = `<?xml version="1.0" encoding="utf-8"?>\n<file>\n<ALL_INSTANCES>\n`;
-  evs.forEach((e,i) => { out += `<instance>\n<ID>${i+1}</ID>\n<start>${(e.t||0).toFixed(2)}</start>\n<end>${(e.e ?? nowSec(m)).toFixed(2)}</end>\n<code>${x(e.n)}</code>\n${(e.l||[]).map(l => `<label>\n${l.g ? `<group>${x(l.g)}</group>\n` : ""}<text>${x(l.t)}</text>\n</label>\n`).join("")}</instance>\n`; });
+  evs.forEach((e,i) => { out += `<instance>\n<ID>${i+1}</ID>\n<start>${vidT(m, e.t||0).toFixed(2)}</start>\n<end>${vidT(m, e.e ?? nowSec(m)).toFixed(2)}</end>\n<code>${x(e.n)}</code>\n${(e.l||[]).map(l => `<label>\n${l.g ? `<group>${x(l.g)}</group>\n` : ""}<text>${x(l.t)}</text>\n</label>\n`).join("")}</instance>\n`; });
   out += `</ALL_INSTANCES>\n<ROWS>\n${codes.map(c => { const [r,g,b] = colorOf(c); return `<row>\n<code>${x(c)}</code>\n<R>${r}</R>\n<G>${g}</G>\n<B>${b}</B>\n</row>\n`; }).join("")}</ROWS>\n</file>\n`;
   return out;
 }
@@ -2491,11 +2510,9 @@ document.addEventListener("click", async (evt) => {
   else if (a === "tl-last"){ const live = m.events.filter(e => e.live && inWin(e)); if (!live.length){ toast("Aucune séquence codée."); return; } tlMoveTo(m, Math.max(...live.map(e => e.e ?? e.t)), true); persist(m); render(); }
   else if (a === "tl-follow"){ state.tlFollow = state.tlFollow === false; render(); }
   else if (a === "cw-sel"){ if (evt.target.closest('[data-act="cw-del"]')) return; if (state.tlDragged){ state.tlDragged = false; return; }
-    const id = t.dataset.id; let sel = state.tlSel || [];
-    if (evt.shiftKey || evt.ctrlKey || evt.metaKey){ sel = sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]; state.cwSel = sel.length === 1 ? sel[0] : sel.includes(state.cwSel) ? state.cwSel : sel[sel.length - 1] || null; }
-    else { const off = state.cwSel === id && sel.length <= 1; sel = off ? [] : [id]; state.cwSel = off ? null : id; }
-    state.tlSel = sel; render(); }
+    tlSelect(t.dataset.id, evt.shiftKey || evt.ctrlKey || evt.metaKey); }
   else if (a === "tl-shift"){ const d = Number(($("#tl-shift-s") || {}).value) || 0; if (!d){ toast("Indique un nombre de secondes."); return; } tlShift(m, tlSelIds(m), d*Number(t.dataset.dir)); persist(m); render(); }
+  else if (a === "cw-video"){ state.cwVideo = !state.cwVideo; render(); }
   else if (a === "tl-unsel"){ state.tlSel = []; state.cwSel = null; render(); }
   else if (a === "cw-link-pl"){ cwLinkPlayer(m, cwColTarget(m), Number(t.dataset.bi)); persist(m); render(); }
   else if (a === "cw-del"){ m.events = m.events.filter(e => e.id !== t.dataset.id && e.lk !== t.dataset.id); m.shots = m.shots.filter(s => s.ev !== t.dataset.id); if (state.cwSel === t.dataset.id) state.cwSel = null; persist(m); render(); }
@@ -2526,6 +2543,7 @@ document.addEventListener("pointerdown", (evt) => {
 });
 document.addEventListener("change", (evt) => {
   if (evt.target.dataset && evt.target.dataset.ef && state.cwEdit){ cwEdSet(evt.target.dataset.ef, evt.target.type === "checkbox" ? evt.target.checked : evt.target.value); return; }
+  if (evt.target.id === "cw-v1" || evt.target.id === "cw-v2"){ const m = current(); const v = evt.target.value.trim() === "" ? null : parseMmss(evt.target.value); if (v == null && evt.target.value.trim()){ toast("Format attendu : mm:ss (ex. 15:00)."); return; } m.video = {...(m.video || {}), [evt.target.id === "cw-v1" ? "v1" : "v2"]: v}; persist(m); toast("Calage vidéo enregistré.", 1200); return; }
   if (evt.target.id === "tl-shift-s"){ state.tlShiftS = Number(evt.target.value) || 0; return; }
   if (evt.target.id === "cw-xmlhalf"){ state.xmlHalf = Number(evt.target.value) || 0; return; }
   if (evt.target.id === "cw-shotp"){ state.cwShot = {...(state.cwShot && state.cwShot.id === evt.target.dataset.id ? state.cwShot : {}), id:evt.target.dataset.id, p:evt.target.value}; return; }
