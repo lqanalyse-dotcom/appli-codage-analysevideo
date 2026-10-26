@@ -242,6 +242,7 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .cw-stage.app .cw-b.on{outline-offset:1px;box-shadow:0 0 0 5px rgba(51,224,122,.3)!important}
 .cw-stage.app .cw-b.tgt{outline-offset:1px}
 .half-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px}
+.tl-name[data-act]{cursor:pointer}.tl-name[data-act]:hover{background:var(--surface-2)}
 .tl-mark{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--good);z-index:2;pointer-events:none}
 .tl-mark span{position:absolute;top:24px;left:3px;background:var(--good);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap}
 .cw-video{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
@@ -1983,6 +1984,13 @@ function cwPressInner(i){
   if (focus && isPlayerCode(CWB[i])){ state.indPlayer = i; render(); cwBanner(current(), null, [], [], [], "Joueur suivi : " + CWB[i].n); return; }
   const m = ensureLiveMatch();
   const t = nowSec(m); const root = CWB[i];
+  // Séquence sélectionnée (timeline / TAB) : un label la complète au lieu de créer une nouvelle action
+  if (CWK === "c" && root.t === 1 && state.cwSel){
+    const sel = m.events.find(e => e.id === state.cwSel && e.live && inWin(e));
+    if (sel){ addLabel(sel, root.g, root.n, true);
+      (CW_OUT[i] || []).forEach(([ty,k]) => { const tb = CWB[k]; if (ty === 1 && tb && tb.t === 1 && !tb.r) addLabel(sel, tb.g, tb.n); });
+      persist(m); render(); cwBanner(m, null, [], [], [sel.id], ""); return; }
+  }
   const visited = new Set(), created = [], closed = [], labelled = [];
   const close = (ev) => { if (ev && ev.e == null){ ev.e = t; closed.push(ev.id); } };
   const run = (j, mode, carry) => {
@@ -2104,7 +2112,7 @@ function timelineHTML(m){
   let axis = ""; for (let x = 0; x <= span; x += step) axis += `<b style="left:${190 + x*sc}px"></b><span style="left:${190 + x*sc}px">${Math.round(x/60)}'</span>`;
   const rows = names.map(n => {
     const evs = live.filter(e => tlKey(e) === n); const bg = btnOf(evs[0]).bg || "#666";
-    return `<div class="tl-row"><div class="tl-name" title="${esc(n)}"><i style="background:${bg}"></i>${esc(n)} <span class="hint">${evs.length}</span></div><div class="tl-track" style="width:${width}px">${evs.map(e => {
+    return `<div class="tl-row"><div class="tl-name" role="button" tabindex="0" data-act="tl-row" data-k="${esc(n)}" title="Sélectionner toutes les séquences de ${esc(n)} (puis TAB pour passer à la suivante)"><i style="background:${bg}"></i>${esc(n)} <span class="hint">${evs.length}</span></div><div class="tl-track" style="width:${width}px">${evs.map(e => {
       const end = e.e ?? now; const lbl = (e.l || []).filter(x => !/^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/.test(x.g)).map(x => x.t).join(", ");
       return `<button type="button" class="tl-bar ${e.e == null ? "act" : ""} ${state.cwSel === e.id || (state.tlSel || []).includes(e.id) ? "sel" : ""}" data-act="cw-sel" data-id="${e.id}" style="left:${e.t*sc}px;width:${Math.max(3,(end - e.t)*sc)}px;background-color:${bg}" title="${esc(n)} · ${mmss(e.t)}–${mmss(end)}${lbl ? " · " + esc(lbl) : ""}"></button>`; }).join("")}</div></div>`; }).join("");
   return `<div class="tl-content" style="width:${190 + width}px"><div class="tl-axis">${axis}</div>${rows || `<div class="empty" style="margin:12px;position:sticky;left:12px;max-width:520px">La timeline se remplit dès que tu appuies sur un bouton.</div>`}${tlMarkers(m, sc)}<div class="tl-head" id="tl-head" style="left:${190 + now*sc}px" title="Glisse le curseur pour le déplacer"><span class="tl-knob"></span></div></div>`;
@@ -2115,6 +2123,14 @@ function tlSelect(id, add){ let sel = state.tlSel || [];
   if (add){ if (state.cwSel && !sel.includes(state.cwSel)) sel = [...sel, state.cwSel]; sel = sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]; state.cwSel = sel.includes(state.cwSel) ? state.cwSel : sel[sel.length - 1] || null; }
   else { const off = state.cwSel === id && sel.length <= 1; sel = off ? [] : [id]; state.cwSel = off ? null : id; }
   state.tlSel = sel; render(); }
+// Parcours d'une sélection : TAB passe à la séquence suivante (curseur et labels sur celle-ci)
+function tlStep(m, dir){
+  const evs = (state.tlSel || []).map(id => m.events.find(e => e.id === id)).filter(Boolean).sort((a,b) => a.t - b.t); if (!evs.length) return;
+  let i = evs.findIndex(e => e.id === state.cwSel); i = i < 0 ? 0 : (i + dir + evs.length) % evs.length;
+  const e = evs[i]; state.cwSel = e.id; tlMoveTo(m, pressTime(e), true); persist(m); render();
+  cwBanner(m, null, [], [], [], `Séquence ${i + 1} / ${evs.length} · ${e.n} à ${clockLabel(m, pressTime(e))}`);
+  const bar = document.querySelector(`#cw-tl .tl-bar[data-id="${e.id}"]`); if (bar) bar.scrollIntoView({block:"nearest", inline:"center"});
+}
 function tlSelIds(m){ const ids = new Set(state.tlSel || []); if (state.cwSel) ids.add(state.cwSel); return [...ids].filter(id => m.events.some(e => e.id === id)); }
 function tlShift(m, ids, d){
   const set = new Set(ids); m.events.forEach(e => { if (e.lk && set.has(e.lk)) set.add(e.id); });
@@ -2317,7 +2333,7 @@ function renderCodage(m){
         <button class="btn sm" data-act="cwe-add" data-t="0">+ Code</button><button class="btn sm" data-act="cwe-add" data-t="1">+ Label</button><button class="btn sm" data-act="cwe-add" data-t="2">+ Titre / zone</button>${CWK === "i" ? `<button class="btn sm" data-act="cw-names">Joueurs</button>` : ""}<button class="btn sm danger" data-act="cwe-reset">Fenêtre d'origine</button><button class="btn sm primary" data-act="cwe-done">Terminer</button>`
         : `<span style="flex:1"></span><div class="seg"><button data-act="cw-style" data-v="app" aria-pressed="${cwStyle() === "app"}">Style appli</button><button data-act="cw-style" data-v="sc" aria-pressed="${cwStyle() === "sc"}">Style Sportscode</button></div><button class="btn sm" data-act="cwe-start">✎ Modifier la fenêtre</button>`}</div>
       <div class="cw-stage ${cwStyle() === "app" ? "app" : ""} ${state.cwEdit ? "editing" : ""}" id="cw-stage"><div class="cw-inner" id="cw-inner" style="width:${CW_W}px;height:${CW_H}px">${order.map(b => cwButtonHTML(b, m, tgt)).join("")}${state.cwLinks || state.cwEdit ? cwLinksSVG() : ""}</div></div>
-      ${state.cwEdit ? "" : `<p class="hint" style="margin:8px 4px 0">${CWK === "i" ? (state.indMode === "focus" ? `Joueur suivi : chaque descripteur d'action (PASSE, TOUCHE, DUEL SOL…) ouvre une nouvelle séquence pour le joueur choisi, les précisions (AVANT, GAGNE, REUSSI…) complètent la séquence en cours. Appuyer sur un joueur le choisit comme joueur suivi.` : `Appuie sur un joueur (raccourci affiché sur le bouton), puis sur l'action et son résultat : ils s'ajoutent à sa dernière action (8 s avant / 8 s après). Chaque joueur codé alimente l'onglet Indiv.`) : `Raccourcis clavier actifs (AZERTY) : a = but pour, z = tir, e = centre, & / é = attaque / défense… Majuscule = action adverse. Vert = action en cours.`} ${tgt ? "Bleu = labels de l'action sélectionnée." : ""} TAB coupe tout, Ctrl+Z annule.
+      ${state.cwEdit ? "" : `<p class="hint" style="margin:8px 4px 0">${CWK === "i" ? (state.indMode === "focus" ? `Joueur suivi : chaque descripteur d'action (PASSE, TOUCHE, DUEL SOL…) ouvre une nouvelle séquence pour le joueur choisi, les précisions (AVANT, GAGNE, REUSSI…) complètent la séquence en cours. Appuyer sur un joueur le choisit comme joueur suivi.` : `Appuie sur un joueur (raccourci affiché sur le bouton), puis sur l'action et son résultat : ils s'ajoutent à sa dernière action (8 s avant / 8 s après). Chaque joueur codé alimente l'onglet Indiv.`) : `Raccourcis clavier actifs (AZERTY) : a = but pour, z = tir, e = centre, & / é = attaque / défense… Majuscule = action adverse. Vert = action en cours.`} ${tgt ? "Bleu = labels de l'action sélectionnée." : ""} TAB coupe tout (ou passe à la séquence suivante quand une ligne est sélectionnée en cliquant son nom), Ctrl+Z annule.
         <button class="btn sm" data-act="cw-links">${state.cwLinks ? "Masquer les liens" : "Afficher les liens"}</button></p>`}</section>
     ${state.cwEdit ? `<section class="panel c4 cwe-panel">${cwEditorHTML()}</section>` : ""}
 
@@ -2512,6 +2528,8 @@ document.addEventListener("click", async (evt) => {
   else if (a === "cw-sel"){ if (evt.target.closest('[data-act="cw-del"]')) return; if (state.tlDragged){ state.tlDragged = false; return; }
     tlSelect(t.dataset.id, evt.shiftKey || evt.ctrlKey || evt.metaKey); }
   else if (a === "tl-shift"){ const d = Number(($("#tl-shift-s") || {}).value) || 0; if (!d){ toast("Indique un nombre de secondes."); return; } tlShift(m, tlSelIds(m), d*Number(t.dataset.dir)); persist(m); render(); }
+  else if (a === "tl-row"){ const ids = m.events.filter(e => e.live && inWin(e) && tlKey(e) === t.dataset.k).sort((x,y) => x.t - y.t).map(e => e.id); if (!ids.length) return;
+    state.tlSel = ids; state.cwSel = ids[0]; tlMoveTo(m, pressTime(m.events.find(e => e.id === ids[0])), true); persist(m); render(); toast(`${ids.length} séquence${ids.length > 1 ? "s" : ""} sélectionnée${ids.length > 1 ? "s" : ""} · TAB = suivante, Maj+TAB = précédente`, 2500); }
   else if (a === "cw-video"){ state.cwVideo = !state.cwVideo; render(); }
   else if (a === "tl-unsel"){ state.tlSel = []; state.cwSel = null; render(); }
   else if (a === "cw-link-pl"){ cwLinkPlayer(m, cwColTarget(m), Number(t.dataset.bi)); persist(m); render(); }
@@ -2564,7 +2582,7 @@ document.addEventListener("keydown", (evt) => {
   if ((evt.key === "ArrowLeft" || evt.key === "ArrowRight") && tlSelIds(current()).length){ evt.preventDefault(); const m = current(); tlShift(m, tlSelIds(m), (evt.key === "ArrowLeft" ? -1 : 1)*(evt.shiftKey ? 5 : 1)); persist(m); render(); return; }
   if (evt.key === "Escape" && tlSelIds(current()).length){ state.tlSel = []; state.cwSel = null; render(); return; }
   if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "z"){ evt.preventDefault(); cwUndo(); return; }
-  if (evt.key === "Tab"){ evt.preventDefault(); cwStopAll(); return; }
+  if (evt.key === "Tab"){ evt.preventDefault(); const m = current(); const ids = tlSelIds(m); if (ids.length > 1){ tlStep(m, evt.shiftKey ? -1 : 1); return; } cwStopAll(); return; }
   if (evt.ctrlKey || evt.metaKey || evt.altKey || evt.key.length !== 1) return;
   const b = CWB.find(b => b.k === evt.key && !b.r && b.t !== 2);
   if (b){ evt.preventDefault(); cwPress(b.i); }
