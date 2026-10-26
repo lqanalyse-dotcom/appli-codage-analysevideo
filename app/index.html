@@ -2273,7 +2273,7 @@ function renderCodage(m){
         <label class="hint" for="cw-half">Mi-temps</label><select class="f" id="cw-half" data-act="cw-half">${[45,40,35,30].map(v => `<option value="${v}" ${c.halfLen===v?"selected":""}>${v} min</option>`).join("")}</select>
       </div>
       <div class="spacer" style="flex:1"></div>
-      <div class="toolbar"><button class="btn" data-act="cw-stopall" title="Touche TAB">Tout couper (TAB)</button><button class="btn" data-act="cw-undo" title="Ctrl+Z">Annuler la dernière action</button><button class="btn" data-act="cw-xml">Exporter XML Sportscode</button></div>
+      <div class="toolbar"><button class="btn" data-act="cw-stopall" title="Touche TAB">Tout couper (TAB)</button><button class="btn" data-act="cw-undo" title="Ctrl+Z">Annuler la dernière action</button><select class="f" id="cw-xmlhalf" aria-label="Partie du match à exporter"><option value="0" ${!state.xmlHalf ? "selected" : ""}>Export : match entier</option><option value="1" ${state.xmlHalf === 1 ? "selected" : ""}>Export : mi-temps 1</option><option value="2" ${state.xmlHalf === 2 ? "selected" : ""}>Export : mi-temps 2</option></select><button class="btn" data-act="cw-xml">Exporter XML Sportscode</button><button class="btn" data-act="cw-xml" data-fmt="lm" title="Une ligne par code, labels en étiquettes">Exporter XML LongoMatch</button></div>
     </div>
     <div class="cw-ctx" style="margin-top:10px">${ctx.map(([g,v]) => `<span class="pill">${esc(g)} : ${esc(v)}</span>`).join("")}<button class="btn sm" data-act="edit-match">Modifier</button>
       <span class="hint">Ces labels sont ajoutés à chaque action, comme dans ta fenêtre (plus Halftime, QT et Minute).</span></div>
@@ -2398,8 +2398,23 @@ setInterval(() => {
   el.firstChild.nodeValue = clockLabel(m, nowSec(m)); if (matchTime(m, nowSec(m)).extra > 0 && !el.dataset.x){ el.dataset.x = 1; render(); }
   const tl = $("#cw-tl"); if (tl && !state.tlDrag && (state.tlTick = (state.tlTick || 0) + 1) % 2 === 0){ const sl = tl.scrollLeft, st = tl.scrollTop; tl.innerHTML = timelineHTML(m); tl.scrollLeft = sl; tl.scrollTop = st; tlFollow(); }
 }, 500);
+// Export LongoMatch : le nom de l'action = le code seul (une ligne par code), les labels vont dans <labels> et la remarque
+function exportLongoMatchXML(m){
+  const evs = m.events.filter(e => (!e.pl || e.w === "i") && (e.e != null || e.live) && (!state.xmlHalf || eventHalf(m, e) === state.xmlHalf)).slice().sort((a,b) => a.t - b.t);
+  const x = s => esc(String(s));
+  const id = () => (crypto.randomUUID ? crypto.randomUUID() : uid() + "-0000-4000-8000-" + uid());
+  const tc = sec => { sec = Math.max(0, sec || 0); const h = Math.floor(sec/3600), mi = Math.floor(sec%3600/60), se = sec%60; return String(h).padStart(2,"0") + ":" + String(mi).padStart(2,"0") + ":" + se.toFixed(7).padStart(10,"0"); };
+  let out = `\ufeff<?xml version="1.0" encoding="utf-8"?>\n<analysis\n\tdbVersion="5.2.0"\n\tid="${id()}"\n\ttitle="${x(m.title || "Match")}"\n\ttype="0"\n\tcreationDate="${new Date().toISOString()}">\n\t<info />\n\t<actions>\n`;
+  evs.forEach(e => {
+    const labs = (e.l || []).filter(l => !SEQ_CTX.test(l.g)).map(l => l.t);
+    const half = (e.l || []).find(l => l.g === "Halftime"); if (half) labs.push(half.t);
+    const name = e.w === "i" && e.pl ? e.n : e.n;
+    out += `\t\t<action\n\t\t\tid="${id()}"\n\t\t\tactionName="${x(name)}"\n\t\t\tactionType="${String(e.n).trim().startsWith("*") ? "Defending" : e.w === "i" ? "Other" : "Attacking"}"\n\t\t\tisBad="False"\n\t\t\tisFavorite="False"\n\t\t\tisGood="False"\n\t\t\tremark="${x(labs.join(" / "))}"\n\t\t\tstartTime="${tc(e.t)}"\n\t\t\tendTime="${tc(e.e ?? nowSec(m))}">\n\t\t\t<players />\n\t\t\t${labs.length ? `<labels>\n${labs.map(t => `\t\t\t\t<label>${x(t)}</label>\n`).join("")}\t\t\t</labels>` : "<labels />"}\n\t\t\t<drawingelements />\n\t\t</action>\n`;
+  });
+  return out + `\t</actions>\n</analysis>\n`;
+}
 function exportSportscodeXML(m){
-  const evs = m.events.filter(e => (!e.pl || e.w === "i") && (e.e != null || e.live)).slice().sort((a,b) => a.t - b.t);
+  const evs = m.events.filter(e => (!e.pl || e.w === "i") && (e.e != null || e.live) && (!state.xmlHalf || eventHalf(m, e) === state.xmlHalf)).slice().sort((a,b) => a.t - b.t);
   const x = s => esc(String(s));
   const colorOf = n => { const b = CW_COL.b.find(b => b.n === n) || CW_IND.b.find(b => b.n === n); const h = (b && b.bg) || "#808080"; return [1,3,5].map(i => Math.round(parseInt(h.substr(i,2),16)/255*65535)); };
   const codes = [...new Set(evs.map(e => e.n))];
@@ -2460,7 +2475,7 @@ document.addEventListener("click", async (evt) => {
   else if (a === "cw-skipshot"){ const ev = m.events.find(e => e.id === t.dataset.id); if (ev){ ev.noShot = 1; persist(m); render(); } }
   else if (a === "cw-new"){ const nm = newMatch({title:"Match codé en direct", opponent:""}); state.matches.set(nm.id, nm); state.currentId = nm.id; persist(nm); render(); openMatchModal(nm); }
   else if (a === "cw-xml"){
-    const xml = exportSportscodeXML(m); const base = "codage-" + slug(m.opponent || m.title);
+    const lm = t.dataset.fmt === "lm"; const xml = lm ? exportLongoMatchXML(m) : exportSportscodeXML(m); const base = "codage-" + slug(m.opponent || m.title) + (state.xmlHalf ? "-mt" + state.xmlHalf : "") + (lm ? "-longomatch" : "");
     if (!S.downloads){ await saveFile(base + ".xml", xml); return; }
     try { await S.downloads.save({filename: base + ".xml", data: xml}); }
     catch (e){ if (e && e.code === "rejected_extension"){ if (await saveFile(base + ".xml.txt", xml)) toast("Enregistré en .xml.txt : retire le .txt avant de l'ouvrir dans Sportscode.", 5000); } else if (e && e.code !== "declined") toast("Export impossible : " + (e.message || "")); }
@@ -2484,6 +2499,7 @@ document.addEventListener("pointerdown", (evt) => {
 });
 document.addEventListener("change", (evt) => {
   if (evt.target.dataset && evt.target.dataset.ef && state.cwEdit){ cwEdSet(evt.target.dataset.ef, evt.target.type === "checkbox" ? evt.target.checked : evt.target.value); return; }
+  if (evt.target.id === "cw-xmlhalf"){ state.xmlHalf = Number(evt.target.value) || 0; return; }
   if (evt.target.id === "cw-shotp"){ state.cwShot = {...(state.cwShot && state.cwShot.id === evt.target.dataset.id ? state.cwShot : {}), id:evt.target.dataset.id, p:evt.target.value}; return; }
   if (evt.target.id === "cw-colq"){ state.colJumpQ = evt.target.value; render(); return; }
   if (evt.target.id === "cw-indpl"){ state.indPlayer = Number(evt.target.value); state.cwSel = null; render(); return; }
