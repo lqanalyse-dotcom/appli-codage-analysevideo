@@ -242,6 +242,8 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .cw-stage.app .cw-b.on{outline-offset:1px;box-shadow:0 0 0 5px rgba(51,224,122,.3)!important}
 .cw-stage.app .cw-b.tgt{outline-offset:1px}
 .half-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 12px}
+.tl-selbar{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border-radius:8px;padding:3px 8px}
+#cw-tl .tl-bar{touch-action:none}
 .cw-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 10px}
 .cw-kpis div{background:var(--surface-2);border-radius:8px;padding:6px;text-align:center}
 .cw-kpis b{display:block;font:800 20px/1 var(--f-display)}.cw-kpis span{font-size:11px;color:var(--ink-2)}
@@ -300,7 +302,6 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .tl-head{position:absolute;top:0;bottom:0;width:2px;background:var(--bad);z-index:4;pointer-events:none}
 .tl-head .tl-knob{position:absolute;top:0;left:-7px;width:16px;height:22px;pointer-events:auto;cursor:ew-resize;touch-action:none}
 .tl-head .tl-knob::before{content:"";position:absolute;left:1px;top:2px;border:7px solid transparent;border-top:12px solid var(--bad)}
-.tl-head::after{content:"";position:absolute;top:0;bottom:0;left:-5px;width:12px;pointer-events:auto;cursor:ew-resize}
 .tl-head.drag{background:var(--focus)}.tl-head.drag .tl-knob::before{border-top-color:var(--focus)}
 .tl-head .tl-knob[data-t]::after{content:attr(data-t);position:absolute;left:18px;top:2px;background:var(--navy);color:#fff;font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px;white-space:nowrap}
 .tl-axis{cursor:ew-resize}
@@ -2102,10 +2103,29 @@ function timelineHTML(m){
     const evs = live.filter(e => tlKey(e) === n); const bg = btnOf(evs[0]).bg || "#666";
     return `<div class="tl-row"><div class="tl-name" title="${esc(n)}"><i style="background:${bg}"></i>${esc(n)} <span class="hint">${evs.length}</span></div><div class="tl-track" style="width:${width}px">${evs.map(e => {
       const end = e.e ?? now; const lbl = (e.l || []).filter(x => !/^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/.test(x.g)).map(x => x.t).join(", ");
-      return `<button type="button" class="tl-bar ${e.e == null ? "act" : ""} ${state.cwSel === e.id ? "sel" : ""}" data-act="cw-sel" data-id="${e.id}" style="left:${e.t*sc}px;width:${Math.max(3,(end - e.t)*sc)}px;background-color:${bg}" title="${esc(n)} · ${mmss(e.t)}–${mmss(end)}${lbl ? " · " + esc(lbl) : ""}"></button>`; }).join("")}</div></div>`; }).join("");
+      return `<button type="button" class="tl-bar ${e.e == null ? "act" : ""} ${state.cwSel === e.id || (state.tlSel || []).includes(e.id) ? "sel" : ""}" data-act="cw-sel" data-id="${e.id}" style="left:${e.t*sc}px;width:${Math.max(3,(end - e.t)*sc)}px;background-color:${bg}" title="${esc(n)} · ${mmss(e.t)}–${mmss(end)}${lbl ? " · " + esc(lbl) : ""}"></button>`; }).join("")}</div></div>`; }).join("");
   return `<div class="tl-content" style="width:${190 + width}px"><div class="tl-axis">${axis}</div>${rows || `<div class="empty" style="margin:12px;position:sticky;left:12px;max-width:520px">La timeline se remplit dès que tu appuies sur un bouton.</div>`}<div class="tl-head" id="tl-head" style="left:${190 + now*sc}px" title="Glisse le curseur pour le déplacer"><span class="tl-knob"></span></div></div>`;
 }
 // Curseur de la timeline déplaçable à la main ; shift = décalage cumulé, annulable avec « Remettre le curseur »
+// Déplacement de séquences : sélection multiple (Maj / Ctrl + clic), glisser à la souris / au pad, flèches, ou décalage en secondes
+function tlSelIds(m){ const ids = new Set(state.tlSel || []); if (state.cwSel) ids.add(state.cwSel); return [...ids].filter(id => m.events.some(e => e.id === id)); }
+function tlShift(m, ids, d){
+  const set = new Set(ids); m.events.forEach(e => { if (e.lk && set.has(e.lk)) set.add(e.id); });
+  let n = 0; m.events.forEach(e => { if (!set.has(e.id)) return; const dd = Math.max(d, -(e.t || 0)); e.t = (e.t || 0) + dd; if (e.e != null) e.e += dd; if (e.pt != null) e.pt += dd; n++; });
+  if (n) toast(`${n} séquence${n > 1 ? "s" : ""} décalée${n > 1 ? "s" : ""} de ${d > 0 ? "+" : ""}${Math.round(d*10)/10} s`, 1500);
+}
+document.addEventListener("pointerdown", (evt) => {
+  const bar = evt.target.closest && evt.target.closest("#cw-tl .tl-bar"); if (!bar || evt.button !== 0 || state.view !== "codage") return;
+  const m = current(); const sc = TL_ZOOMS[state.tlZoom ?? 2]; const id = bar.dataset.id;
+  const ids = (state.tlSel || []).includes(id) || state.cwSel === id ? tlSelIds(m) : [id];
+  const els = ids.map(i => document.querySelector(`#cw-tl .tl-bar[data-id="${i}"]`)).filter(Boolean).map(el => [el, parseFloat(el.style.left)]);
+  const x0 = evt.clientX; let moved = false; state.tlDrag = true;
+  const mv = e => { const dx = e.clientX - x0; if (!moved && Math.abs(dx) < 4) return; moved = true; els.forEach(([el, l]) => { el.style.left = (l + dx) + "px"; el.classList.add("sel"); }); };
+  const up = e => { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); state.tlDrag = false;
+    if (!moved) return; state.tlDragged = true; setTimeout(() => { state.tlDragged = false; }, 300);
+    const d = Math.round((e.clientX - x0)/sc*10)/10; if (!(ids.includes(state.cwSel))) { state.tlSel = ids; state.cwSel = ids[0]; } tlShift(m, ids, d); persist(m); render(); };
+  document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
+});
 function tlMoveTo(m, t, track){ const c = liveClock(m); t = Math.max(0, t); if (track) c.shift = (c.shift || 0) + (t - nowSec(m)); c.base = t; c.at = Date.now(); }
 document.addEventListener("pointerdown", (evt) => {
   const h = evt.target.closest && evt.target.closest("#tl-head .tl-knob, #tl-head, #cw-tl .tl-axis"); if (!h || evt.button !== 0 || state.view !== "codage") return;
@@ -2292,6 +2312,7 @@ function renderCodage(m){
 
     <section class="panel c12"><div class="ph"><h2>Timeline</h2><div class="toolbar"><span class="sub">${live.length} actions</span>
       <div class="seg"><button data-act="tl-zoom" data-z="-1" aria-label="Dézoomer">−</button><button data-act="tl-zoom" data-z="1" aria-label="Zoomer">+</button></div>
+      ${tlSelIds(m).length ? `<span class="tl-selbar"><b>${tlSelIds(m).length} sélectionnée${tlSelIds(m).length > 1 ? "s" : ""}</b><button class="btn sm" data-act="tl-shift" data-dir="-1" aria-label="Décaler vers la gauche">◀</button><input type="number" id="tl-shift-s" value="${state.tlShiftS ?? 5}" min="0" step="0.5" style="width:64px" aria-label="Secondes"><span class="hint">s</span><button class="btn sm" data-act="tl-shift" data-dir="1" aria-label="Décaler vers la droite">▶</button><button class="btn sm" data-act="tl-unsel">Désélectionner</button></span>` : ""}
       ${liveClock(m).shift ? `<button class="btn sm primary" data-act="tl-back" title="Annule le déplacement manuel du curseur">↺ Remettre le curseur</button>` : ""}<button class="btn sm" data-act="tl-last" title="Place le curseur à la fin de la dernière séquence codée">Aller à la dernière séquence</button>
       <button class="btn sm" data-act="tl-follow" aria-pressed="${state.tlFollow !== false}">${state.tlFollow !== false ? "Suivi activé" : "Suivre la tête de lecture"}</button></div></div>
       <div class="tl-wrap" id="cw-tl">${timelineHTML(m)}</div></section>
@@ -2469,7 +2490,13 @@ document.addEventListener("click", async (evt) => {
   else if (a === "tl-back"){ const c = liveClock(m); tlMoveTo(m, nowSec(m) - (c.shift || 0)); c.shift = 0; persist(m); render(); toast("Curseur remis à sa place.", 1500); }
   else if (a === "tl-last"){ const live = m.events.filter(e => e.live && inWin(e)); if (!live.length){ toast("Aucune séquence codée."); return; } tlMoveTo(m, Math.max(...live.map(e => e.e ?? e.t)), true); persist(m); render(); }
   else if (a === "tl-follow"){ state.tlFollow = state.tlFollow === false; render(); }
-  else if (a === "cw-sel"){ if (evt.target.closest('[data-act="cw-del"]')) return; state.cwSel = state.cwSel === t.dataset.id ? null : t.dataset.id; render(); }
+  else if (a === "cw-sel"){ if (evt.target.closest('[data-act="cw-del"]')) return; if (state.tlDragged){ state.tlDragged = false; return; }
+    const id = t.dataset.id; let sel = state.tlSel || [];
+    if (evt.shiftKey || evt.ctrlKey || evt.metaKey){ sel = sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]; state.cwSel = sel.length === 1 ? sel[0] : sel.includes(state.cwSel) ? state.cwSel : sel[sel.length - 1] || null; }
+    else { const off = state.cwSel === id && sel.length <= 1; sel = off ? [] : [id]; state.cwSel = off ? null : id; }
+    state.tlSel = sel; render(); }
+  else if (a === "tl-shift"){ const d = Number(($("#tl-shift-s") || {}).value) || 0; if (!d){ toast("Indique un nombre de secondes."); return; } tlShift(m, tlSelIds(m), d*Number(t.dataset.dir)); persist(m); render(); }
+  else if (a === "tl-unsel"){ state.tlSel = []; state.cwSel = null; render(); }
   else if (a === "cw-link-pl"){ cwLinkPlayer(m, cwColTarget(m), Number(t.dataset.bi)); persist(m); render(); }
   else if (a === "cw-del"){ m.events = m.events.filter(e => e.id !== t.dataset.id && e.lk !== t.dataset.id); m.shots = m.shots.filter(s => s.ev !== t.dataset.id); if (state.cwSel === t.dataset.id) state.cwSel = null; persist(m); render(); }
   else if (a === "cw-skipshot"){ const ev = m.events.find(e => e.id === t.dataset.id); if (ev){ ev.noShot = 1; persist(m); render(); } }
@@ -2499,6 +2526,7 @@ document.addEventListener("pointerdown", (evt) => {
 });
 document.addEventListener("change", (evt) => {
   if (evt.target.dataset && evt.target.dataset.ef && state.cwEdit){ cwEdSet(evt.target.dataset.ef, evt.target.type === "checkbox" ? evt.target.checked : evt.target.value); return; }
+  if (evt.target.id === "tl-shift-s"){ state.tlShiftS = Number(evt.target.value) || 0; return; }
   if (evt.target.id === "cw-xmlhalf"){ state.xmlHalf = Number(evt.target.value) || 0; return; }
   if (evt.target.id === "cw-shotp"){ state.cwShot = {...(state.cwShot && state.cwShot.id === evt.target.dataset.id ? state.cwShot : {}), id:evt.target.dataset.id, p:evt.target.value}; return; }
   if (evt.target.id === "cw-colq"){ state.colJumpQ = evt.target.value; render(); return; }
@@ -2515,6 +2543,8 @@ document.addEventListener("keydown", (evt) => {
     else if (evt.key === "Escape"){ state.cwEd = null; render(); }
     return;
   }
+  if ((evt.key === "ArrowLeft" || evt.key === "ArrowRight") && tlSelIds(current()).length){ evt.preventDefault(); const m = current(); tlShift(m, tlSelIds(m), (evt.key === "ArrowLeft" ? -1 : 1)*(evt.shiftKey ? 5 : 1)); persist(m); render(); return; }
+  if (evt.key === "Escape" && tlSelIds(current()).length){ state.tlSel = []; state.cwSel = null; render(); return; }
   if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "z"){ evt.preventDefault(); cwUndo(); return; }
   if (evt.key === "Tab"){ evt.preventDefault(); cwStopAll(); return; }
   if (evt.ctrlKey || evt.metaKey || evt.altKey || evt.key.length !== 1) return;
