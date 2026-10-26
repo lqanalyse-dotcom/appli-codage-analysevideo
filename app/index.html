@@ -2398,7 +2398,7 @@ setInterval(() => {
   el.firstChild.nodeValue = clockLabel(m, nowSec(m)); if (matchTime(m, nowSec(m)).extra > 0 && !el.dataset.x){ el.dataset.x = 1; render(); }
   const tl = $("#cw-tl"); if (tl && !state.tlDrag && (state.tlTick = (state.tlTick || 0) + 1) % 2 === 0){ const sl = tl.scrollLeft, st = tl.scrollTop; tl.innerHTML = timelineHTML(m); tl.scrollLeft = sl; tl.scrollTop = st; tlFollow(); }
 }, 500);
-// Export LongoMatch : le nom de l'action = le code seul (une ligne par code), les labels vont dans <labels> et la remarque
+// Export LongoMatch : le nom de l'action = le code seul (une ligne par code) ; les descripteurs vont seulement dans la remarque (LongoMatch les colle sinon au nom)
 function exportLongoMatchXML(m){
   const evs = m.events.filter(e => (!e.pl || e.w === "i") && (e.e != null || e.live) && (!state.xmlHalf || eventHalf(m, e) === state.xmlHalf)).slice().sort((a,b) => a.t - b.t);
   const x = s => esc(String(s));
@@ -2409,7 +2409,7 @@ function exportLongoMatchXML(m){
     const labs = (e.l || []).filter(l => !SEQ_CTX.test(l.g)).map(l => l.t);
     const half = (e.l || []).find(l => l.g === "Halftime"); if (half) labs.push(half.t);
     const name = e.w === "i" && e.pl ? e.n : e.n;
-    out += `\t\t<action\n\t\t\tid="${id()}"\n\t\t\tactionName="${x(name)}"\n\t\t\tactionType="${String(e.n).trim().startsWith("*") ? "Defending" : e.w === "i" ? "Other" : "Attacking"}"\n\t\t\tisBad="False"\n\t\t\tisFavorite="False"\n\t\t\tisGood="False"\n\t\t\tremark="${x(labs.join(" / "))}"\n\t\t\tstartTime="${tc(e.t)}"\n\t\t\tendTime="${tc(e.e ?? nowSec(m))}">\n\t\t\t<players />\n\t\t\t${labs.length ? `<labels>\n${labs.map(t => `\t\t\t\t<label>${x(t)}</label>\n`).join("")}\t\t\t</labels>` : "<labels />"}\n\t\t\t<drawingelements />\n\t\t</action>\n`;
+    out += `\t\t<action\n\t\t\tid="${id()}"\n\t\t\tactionName="${x(name)}"\n\t\t\tactionType="${String(e.n).trim().startsWith("*") ? "Defending" : e.w === "i" ? "Other" : "Attacking"}"\n\t\t\tisBad="False"\n\t\t\tisFavorite="False"\n\t\t\tisGood="False"\n\t\t\tremark="${x(labs.join(" / "))}"\n\t\t\tstartTime="${tc(e.t)}"\n\t\t\tendTime="${tc(e.e ?? nowSec(m))}">\n\t\t\t<players />\n\t\t\t<drawingelements />\n\t\t</action>\n`;
   });
   return out + `\t</actions>\n</analysis>\n`;
 }
