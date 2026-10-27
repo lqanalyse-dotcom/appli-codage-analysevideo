@@ -246,6 +246,7 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .tl-mark{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--good);z-index:2;pointer-events:none}
 .tl-mark span{position:absolute;top:24px;left:3px;background:var(--good);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap}
 .cw-video{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.cw-float{position:fixed;right:16px;bottom:16px;width:min(420px,calc(100% - 32px));max-height:calc(100vh - 120px);overflow:auto;z-index:45;box-shadow:0 12px 40px rgba(0,0,0,.35);border:2px solid var(--pau)}
 .tl-selbar{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border-radius:8px;padding:3px 8px}
 #cw-tl .tl-bar{touch-action:none}
 .cw-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 10px}
@@ -2302,7 +2303,8 @@ function renderCodage(m){
   const tgt = (state.cwSel && pool.find(e => e.id === state.cwSel)) || null;
   const order = [...CWB].sort((a,b) => (a.t === 2 ? 0 : 1) - (b.t === 2 ? 0 : 1) || (a.t === 2 && b.t === 2 ? b.w*b.h - a.w*a.h : 0));
   const linked = linkedEventIds(m);
-  const toPlace = CWK !== "c" ? null : [...live].reverse().find(e => (e.k === "TIR" && !linked.has(e.id) || (e.k === "RECUP" || e.k === "PERTE") && e.px == null) && !e.noShot);
+  const selPl = CWK === "c" && state.cwSel ? live.find(e => e.id === state.cwSel && (e.k === "RECUP" || e.k === "PERTE" || e.k === "TIR" && !linked.has(e.id))) : null;
+  const toPlace = CWK !== "c" ? null : selPl || [...live].reverse().find(e => (e.k === "TIR" && !linked.has(e.id) || (e.k === "RECUP" || e.k === "PERTE") && e.px == null) && !e.noShot);
   const isLoc = toPlace && toPlace.k !== "TIR";
   const ctx = ctxLabels(m, t).filter(x => !/^(Halftime|QT|Minute)$/.test(x[0]));
   const btnColor = e => btnOf(e).bg || "#666";
@@ -2351,8 +2353,10 @@ function renderCodage(m){
           <div class="chips">${(e.l || []).filter(x => !/^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/.test(x.g)).map(x => `<span class="chip">${esc(x.g ? x.g + " : " : "")}${esc(x.t)}</span>`).join("")}</div></div>
         <button class="btn sm danger" data-act="cw-del" data-id="${e.id}" aria-label="Supprimer">×</button></div>`).join("")}</div>` : `<div class="empty">Aucune action codée. Lance le chrono puis clique sur les boutons ou utilise les raccourcis.</div>`}
     </section>
-    ${CWK === "i" ? `<section class="panel c5"><div class="ph"><h2>Bilan indiv du match</h2><span class="sub">clique un joueur pour sa fiche</span></div>${indivSummaryHTML(m)}${cwLiveIndHTML(m)}</section>` : `<section class="panel c5"><div class="ph"><h2>${isLoc ? (toPlace.k === "RECUP" ? "Position de la récupération" : "Position de la perte") : "Position des tirs"}</h2><span class="sub">${isLoc ? "terrain 18 zones" : "pour le xG"}</span></div>
+    ${CWK === "i" ? `<section class="panel c5"><div class="ph"><h2>Bilan indiv du match</h2><span class="sub">clique un joueur pour sa fiche</span></div>${indivSummaryHTML(m)}${cwLiveIndHTML(m)}</section>` : `<section class="panel c5 ${toPlace && !state.cwFloatOff ? "cw-float" : ""}"><div class="ph"><h2>${isLoc ? (toPlace.k === "RECUP" ? "Position de la récupération" : "Position de la perte") : "Position des tirs"}</h2><span class="sub">${isLoc ? "terrain 18 zones" : "pour le xG"}</span></div>
       ${isLoc ? `<p style="margin:0 0 8px"><span class="cw-code" style="background:${btnColor(toPlace)};color:${inkOn(btnColor(toPlace))}">${esc(toPlace.n)}</span> à ${mmss(pressTime(toPlace))} : clique l'endroit exact${toPlace.b ? ` (zone codée : ${esc(toPlace.b)})` : ""}. Pau attaque vers la droite.</p>
+        <div class="row" style="margin:0 0 6px"><label class="l" for="cw-locp">${toPlace.k === "RECUP" ? "Joueur qui récupère" : "Joueur qui perd"}</label> <select class="f" id="cw-locp" data-id="${toPlace.id}">${playerOptions(m, ((toPlace.l || []).find(x => x.g === "JOUEUR") || {}).t || "")}</select></div>
+        ${toPlace.px != null ? `<p class="hint">Déjà placée en ${zoneFromXY(toPlace.px, toPlace.py)} : clique pour la déplacer.</p>` : ""}
         <div style="margin-top:4px">${locPickerSVG(toPlace)}</div>
         <p class="hint"><button class="btn sm" data-act="cw-skipshot" data-id="${toPlace.id}">Ne pas placer</button> Tu peux aussi placer plus tard depuis Collectif.</p>`
       : toPlace ? `<p style="margin:0 0 8px"><span class="cw-code" style="background:${btnColor(toPlace)};color:${inkOn(btnColor(toPlace))}">${esc(toPlace.n)}</span> à ${mmss(pressTime(toPlace))} : clique sur le point de frappe.</p>
@@ -2563,6 +2567,12 @@ document.addEventListener("change", (evt) => {
   if (evt.target.dataset && evt.target.dataset.ef && state.cwEdit){ cwEdSet(evt.target.dataset.ef, evt.target.type === "checkbox" ? evt.target.checked : evt.target.value); return; }
   if (evt.target.id === "cw-v1" || evt.target.id === "cw-v2"){ const m = current(); const v = evt.target.value.trim() === "" ? null : parseMmss(evt.target.value); if (v == null && evt.target.value.trim()){ toast("Format attendu : mm:ss (ex. 15:00)."); return; } m.video = {...(m.video || {}), [evt.target.id === "cw-v1" ? "v1" : "v2"]: v}; persist(m); toast("Calage vidéo enregistré.", 1200); return; }
   if (evt.target.id === "tl-shift-s"){ state.tlShiftS = Number(evt.target.value) || 0; return; }
+  if (evt.target.id === "cw-locp"){ const m = current(); const ev = m.events.find(e => e.id === evt.target.dataset.id); if (!ev) return;
+    // Un seul joueur pour une récup / perte : on retire l'ancien lien puis on relie le joueur choisi (descripteur + séquence indiv)
+    m.events.filter(e => e.lk === ev.id).forEach(e => cwLinkPlayer(m, ev, e.bi));
+    const b = cwPlayers().find(x => playerFromCode(x.n) === evt.target.value);
+    if (b) cwLinkPlayer(m, ev, b.i); else if (evt.target.value){ ev.l = (ev.l || []).filter(x => x.g !== "JOUEUR"); ev.l.push({g:"JOUEUR", t:evt.target.value}); }
+    persist(m); render(); return; }
   if (evt.target.id === "cw-xmlhalf"){ state.xmlHalf = Number(evt.target.value) || 0; return; }
   if (evt.target.id === "cw-shotp"){ state.cwShot = {...(state.cwShot && state.cwShot.id === evt.target.dataset.id ? state.cwShot : {}), id:evt.target.dataset.id, p:evt.target.value}; return; }
   if (evt.target.id === "cw-colq"){ state.colJumpQ = evt.target.value; render(); return; }
