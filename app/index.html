@@ -334,9 +334,9 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .ai-form textarea{resize:none;min-height:44px;max-height:140px;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--surface);color:var(--ink);font:inherit}
 
 /* Rapport PDF : palette d'impression fixe, indépendante du thème */
-.rpt{width:1123px;height:794px;background:#ffffff;color:#0d1a3a;font-family:var(--f-body);display:grid;grid-template-rows:auto 1fr auto;overflow:hidden}
+.rpt{width:1123px;height:794px;background:var(--rpt-bg,#ffffff);color:#0d1a3a;font-family:var(--f-body);display:grid;grid-template-rows:auto 1fr auto;overflow:hidden}
 .rpt *{box-sizing:border-box}
-.rpt .rh{background:#0a1f4f;color:#ffffff;border-bottom:4px solid #f6c400;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:12px 22px;gap:12px}
+.rpt .rh{background:var(--rpt-main,#0a1f4f);color:#ffffff;border-bottom:4px solid var(--rpt-acc,#f6c400);display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:12px 22px;gap:12px}
 .rpt .rh .t{font-family:var(--f-display);font-weight:800;font-size:26px;text-transform:uppercase;line-height:1}
 .rpt .rh .m{font-size:11px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;margin-top:3px}
 .rpt .rh .sc{font-family:var(--f-display);font-weight:800;font-size:44px;line-height:1;text-align:center}
@@ -345,7 +345,7 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .rpt .col{display:grid;gap:10px;align-content:start;min-height:0}
 .rpt .box{border:1px solid #d9deea;border-radius:8px;padding:8px 10px}
 .rpt .ent svg{display:block;width:100%;height:130px}
-.rpt .box h4{margin:0 0 6px;font-family:var(--f-display);font-weight:700;font-size:14px;letter-spacing:.06em;text-transform:uppercase;color:#0a1f4f}
+.rpt .box h4{margin:0 0 6px;font-family:var(--f-display);font-weight:700;font-size:14px;letter-spacing:.06em;text-transform:uppercase;color:var(--rpt-main,#0a1f4f)}
 .rpt .d{display:grid;grid-template-columns:34px 1fr 34px;gap:6px;align-items:center;margin-bottom:4px}
 .rpt .d b{font-family:var(--f-display);font-size:15px;font-variant-numeric:tabular-nums}
 .rpt .d b.r{text-align:right}
@@ -1469,7 +1469,36 @@ function renderDocs(){
   </div>`;
 }
 
+// Paramètres d'apparence (réglages de l'application) : thème, couleurs de l'appli et du PDF
+const THEME_DEF = {mode:"auto", bg:"", navy:"", pau:"", pdfMain:"#0a1f4f", pdfAcc:"#f6c400", pdfBg:"#ffffff"};
+function rptVars(el){ const t = {...THEME_DEF, ...(state.settings.theme || {})}; el.style.setProperty("--rpt-main", t.pdfMain); el.style.setProperty("--rpt-acc", t.pdfAcc); el.style.setProperty("--rpt-bg", t.pdfBg); }
+function applyTheme(){
+  const t = {...THEME_DEF, ...(state.settings.theme || {})}, r = document.documentElement;
+  if (t.mode === "auto") r.removeAttribute("data-theme"); else r.setAttribute("data-theme", t.mode);
+  [["--bg", t.bg], ["--navy", t.navy], ["--pau", t.pau]].forEach(([k, v]) => v ? r.style.setProperty(k, v) : r.style.removeProperty(k));
+  if (t.bg) document.body.style.background = t.bg; else document.body.style.removeProperty("background");
+  rptVars(r);
+}
+function openSettings(){
+  const t = {...THEME_DEF, ...(state.settings.theme || {})};
+  const bg = document.createElement("div"); bg.className = "modal-bg";
+  const col = (k, lab, def) => `<label class="cwe-f"><span>${lab}</span><input type="color" data-k="${k}" value="${t[k] || def}"></label>`;
+  bg.innerHTML = `<div class="modal" role="dialog" aria-label="Paramètres"><h3>Paramètres</h3>
+    <div class="cwe-sec" style="border:0;padding:0"><b>Logiciel</b>
+      <label class="cwe-f"><span>Thème</span><select class="f" data-k="mode"><option value="auto" ${t.mode === "auto" ? "selected" : ""}>Automatique (comme l'ordinateur)</option><option value="light" ${t.mode === "light" ? "selected" : ""}>Clair</option><option value="dark" ${t.mode === "dark" ? "selected" : ""}>Sombre</option></select></label>
+      <div class="cwe-grid">${col("bg","Couleur de fond", t.mode === "dark" ? "#081230" : "#eef1f7")}${col("navy","Couleur principale (bandeau)", "#0a1f4f")}${col("pau","Couleur d'accent", "#f6c400")}</div></div>
+    <div class="cwe-sec"><b>PDF</b><div class="cwe-grid">${col("pdfMain","En-tête et titres", "#0a1f4f")}${col("pdfAcc","Accent (liseré, barres)", "#f6c400")}${col("pdfBg","Fond de page", "#ffffff")}</div></div>
+    <div class="actions"><button class="btn danger" data-x="reset">Couleurs d'origine</button><span style="flex:1"></span><button class="btn" data-x="no">Annuler</button><button class="btn primary" data-x="ok">Enregistrer</button></div></div>`;
+  document.body.appendChild(bg);
+  const read = () => { const o = {}; bg.querySelectorAll("[data-k]").forEach(i => o[i.dataset.k] = i.value); return o; };
+  const touched = new Set(); bg.addEventListener("input", e => { if (e.target.dataset.k) touched.add(e.target.dataset.k); });
+  const save = async (theme) => { state.settings = {...state.settings, theme}; bg.remove(); render(); if (S.db){ try { await S.db.doc("settings/app").set(state.settings); } catch { toast("Paramètres non enregistrés pour l'instant."); } } toast("Paramètres enregistrés.", 1500); };
+  bg.querySelector('[data-x="no"]').onclick = () => bg.remove();
+  bg.querySelector('[data-x="reset"]').onclick = () => save({...THEME_DEF});
+  bg.querySelector('[data-x="ok"]').onclick = () => { const o = read(), n = {...t, mode:o.mode, pdfMain:o.pdfMain, pdfAcc:o.pdfAcc, pdfBg:o.pdfBg}; ["bg","navy","pau"].forEach(k => { if (touched.has(k)) n[k] = o[k]; }); save(n); };
+}
 function render(){
+  applyTheme();
   const app = $("#app");
   const m = current();
   const st = teamStats(m);
@@ -1488,6 +1517,7 @@ function render(){
     <label class="sr" for="match-select" hidden>Match</label>
     <select id="match-select" data-act="select-match" aria-label="Match affiché">${list.map(x => `<option value="${x.id}" ${x.id===m.id?"selected":""}>${esc(x.title)}</option>`).join("")}</select>
     <button class="btn ghost-dark" data-act="import">Importer</button>
+    <button class="btn ghost-dark" data-act="settings" aria-label="Paramètres" title="Paramètres">⚙ Paramètres</button>
     ${state.view !== "docs" ? `<button class="btn primary" data-act="pdf">PDF une page</button>` : ""}
   </div></header>
   ${state.view !== "docs" ? headerHTML(m, st) : ""}
@@ -1571,6 +1601,7 @@ document.addEventListener("click", async (evt) => {
     case "import": $("#file-import").click(); break;
     case "pick-docs": $("#file-docs").click(); break;
     case "pdf": openPdfPreview(); break;
+    case "settings": openSettings(); break;
     case "edit-match": openMatchModal(m); break;
     case "new-match": { const nm = newMatch({title:"Nouveau match", opponent:""}); state.matches.set(nm.id, nm); state.currentId = nm.id; persist(nm); state.view = "collectif"; render(); openMatchModal(nm); break; }
     case "open-match": state.currentId = t.dataset.id; state.view = "collectif"; lsWrite(); render(); break;
@@ -1849,7 +1880,7 @@ async function buildPdf(m){
   host.innerHTML = reportHTML(m);
   // Couleurs fixes pour l'impression : les variables de thème sont résolues en clair
   host.style.setProperty("--pitch","#f6faf6"); host.style.setProperty("--pitch-line","#b9c6bb"); host.style.setProperty("--pitch-stripe","#eef4ee");
-  host.style.setProperty("--ink","#0d1a3a"); host.style.setProperty("--ink-2","#56618a"); host.style.setProperty("--focus","#2b62e3"); host.style.setProperty("--pau","#f6c400");
+  host.style.setProperty("--ink","#0d1a3a"); host.style.setProperty("--ink-2","#56618a"); host.style.setProperty("--focus","#2b62e3"); host.style.setProperty("--pau", (state.settings.theme || {}).pdfAcc || "#f6c400"); rptVars(host);
   document.body.appendChild(host);
   try {
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
