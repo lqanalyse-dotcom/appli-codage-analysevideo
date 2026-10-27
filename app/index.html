@@ -245,6 +245,24 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .tl-name[data-act]{cursor:pointer}.tl-name[data-act]:hover{background:var(--surface-2)}
 .tl-mark{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--good);z-index:2;pointer-events:none}
 .tl-mark span{position:absolute;top:24px;left:3px;background:var(--good);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap}
+.bip{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;margin-top:12px;padding:8px 10px;border-radius:8px;background:rgba(127,127,127,.1);font-size:13px}
+.bip b{text-transform:uppercase;letter-spacing:.04em;font-size:11px}.bip strong{font-size:18px}.bip .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px}
+.bip .sw.us{background:var(--us,var(--pau))}.bip .sw.them{background:var(--opp)}
+.bip.p{font-size:9.5px;margin-top:6px;padding:5px 7px;gap:2px 10px}.bip.p strong{font-size:13px}
+.vp{position:fixed;right:16px;bottom:16px;z-index:60;width:560px;min-width:300px;max-width:96vw;background:#0d1626;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.45);resize:both;overflow:hidden;display:flex;flex-direction:column}
+.vp[hidden]{display:none}
+.vp-bar{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--navy,#14213d);cursor:move;user-select:none;font-size:13px}
+.vp-bar .vp-name{flex:1;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.vp-bar button,.vp-ctl button{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:5px;padding:3px 8px;cursor:pointer;font:inherit;font-size:12px}
+.vp-ctl button:hover,.vp-bar button:hover{background:rgba(255,255,255,.22)}
+.vp.min .vp-body{display:none}
+.vp-body{display:flex;flex-direction:column;flex:1;min-height:0}
+.vp video{width:100%;flex:1;min-height:120px;background:#000;display:block}
+.vp-empty{padding:28px 16px;text-align:center}.vp-empty p{color:rgba(255,255,255,.65);font-size:12px;margin:10px 0 0}
+.vp-ctl{display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:6px 8px;font-size:12px}
+.vp-ctl select{font:inherit;font-size:12px;padding:2px;color:#111;background:#fff;border-radius:4px}
+.vp-ctl .vp-t{font-variant-numeric:tabular-nums;min-width:96px}
+.vp-seek{width:100%;margin:0;accent-color:var(--us,var(--pau))}
 .cw-video{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
 .cw-float{position:fixed;right:16px;bottom:16px;width:min(420px,calc(100% - 32px));max-height:calc(100vh - 120px);overflow:auto;z-index:45;box-shadow:0 12px 40px rgba(0,0,0,.35);border:2px solid var(--pau)}
 .pal-list{display:flex;flex-wrap:wrap;gap:6px}
@@ -809,8 +827,17 @@ function teamStats(m){
   const ps = st.us.possSec + st.them.possSec;
   st.possCoded = st.us.possSec > 0 && st.them.possSec > 0;
   st.us.poss = ps ? st.us.possSec/ps*100 : 0; st.them.poss = ps ? st.them.possSec/ps*100 : 0;
+  st.bip = ps; st.bipSpan = matchSpan(m); st.bipPct = st.bipSpan ? Math.min(100, ps/st.bipSpan*100) : 0;
   return st;
 }
+// Ballon in play = durée cumulée des séquences ATTAQUE + DEFENSE ; rapportée au temps de jeu écoulé (pause de mi-temps exclue)
+function matchSpan(m){ const c = m.live, h = state.half, k2 = c ? k2At(c) : null;
+  if (c && (c.run || c.base > 0)){ const T = nowSec(m); return h === 1 ? (k2 != null ? Math.min(T, k2) : T) : h === 2 ? (k2 != null ? Math.max(0, T - k2) : 0) : T; }
+  const ev = teamEvents(m); if (!ev.length) return 0;
+  return Math.max(...ev.map(e => e.e ?? e.t ?? 0)) - Math.min(...ev.map(e => e.t ?? 0)); }
+const hms = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s/3600); return (h ? h + ":" + String(Math.floor(s/60)%60).padStart(2,"0") : Math.floor(s/60)) + ":" + String(s%60).padStart(2,"0"); };
+function bipHTML(st, print){ if (!(st.bip > 0)) return "";
+  return `<div class="bip${print ? " p" : ""}"><b>Ballon in play</b><strong>${hms(st.bip)}</strong>${st.bipSpan ? `<span>${Math.round(st.bipPct)} % du temps de jeu (${hms(st.bipSpan)})</span>` : ""}<span><i class="sw us"></i>Pau ${hms(st.us.possSec)}</span><span><i class="sw them"></i>Adv. ${hms(st.them.possSec)}</span></div>`; }
 // Grilles : récupérations Pau et pertes Pau, dans le repère Pau (attaque vers la droite)
 function zoneCounts(m, kind, filter){
   const counts = Object.fromEntries(ZONES.map(z => [z,0])); const bands = {}, pts = [], todo = []; let tagged = 0, total = 0;
@@ -1308,6 +1335,7 @@ function renderCollectif(m){
   <div class="grid">
     <section class="panel c7"><div class="ph"><h2>Pau FC face à ${esc(m.opponent || "l'adversaire")}</h2><div class="legend"><span><i class="sw us"></i>Pau FC</span><span><i class="sw them"></i>${esc(m.opponent || "Adversaire")}</span></div></div>
       <div class="two"><div class="duels">${rows.slice(0,half).map(r => duelHTML(r[0], r[1], r[2], r[3])).join("")}</div><div class="duels">${rows.slice(half).map(r => duelHTML(r[0], r[1], r[2], r[3])).join("")}</div></div>
+      ${bipHTML(st)}
       ${!st.possCoded ? `<p class="hint">Possession non codée dans ce fichier (actions ATTAQUE / DEFENSE absentes).</p>` : ""}
     </section>
     <section class="panel c5"><div class="ph"><h2>Entrées dans les 20 m</h2><span class="sub">par couloir d'entrée</span></div>
@@ -1859,7 +1887,7 @@ function reportHTML(m){
     `<div class="sc">${st.us.goals} – ${st.them.goals}</div><div class="sx">${m.shots.length ? `xG ${fmt1(st.us.xg)} – ${fmt1(st.them.xg)}` : esc(when)}</div>`,
     `<div class="t" style="color:${lum(opp) < .05 ? '#ffffff' : opp}">${esc(m.opponent || "Adversaire")}</div><div class="m">${esc(when)}</div>`)}
     <div class="rb">
-      <div class="col"><div class="box"><h4>Comparatif</h4>${rows.map(r => d(r[0], r[1], r[2], r[3])).join("")}</div></div>
+      <div class="col"><div class="box"><h4>Comparatif</h4>${rows.map(r => d(r[0], r[1], r[2], r[3])).join("")}${bipHTML(st, true)}</div></div>
       <div class="col"><div class="box"><h4>Zones de tir · taille = xG</h4>${shotMapSVG(m, {print:true})}
         <table style="margin-top:4px;font-size:10.5px"><tr><td></td><td class="n">Tirs</td><td class="n">Cadrés</td><td class="n">Non cadrés</td><td class="n">Contrés</td><td class="n">Surface</td><td class="n">Hors surf.</td></tr>
         ${[["us","Pau"],["them","Adv."]].map(([tm,l]) => { const f = finitionStats(m, tm); return `<tr><td><b>${l}</b></td><td class="n">${f.total}</td><td class="n">${f.onTarget}</td><td class="n">${f.res.horscadre}</td><td class="n">${f.res.contre}</td><td class="n">${f.surf}</td><td class="n">${f.hors}</td></tr>`; }).join("")}</table></div>
@@ -1932,7 +1960,7 @@ const isPlayerCode = b => b.t === 0 && /^\s*\d+\s*-\s*\S/.test(b.n);
 const cwIsToggle = b => b.t === 0 && b.ld == null && b.lg == null;
 const CW_TARGET_COL = {"FINITION":"03 - TIR","DEPART TIR":"03 - TIR","ZONE FINITION":"03 - TIR","FINITION ADV":"*03 - TIR ADV","DEPART TIR ADV":"*03 - TIR ADV","ZONE FINITION ADV":"*03 - TIR ADV","BUT":"02 - BUT POUR","BUT ADV":"*02 - BUT CONTRE"};
 function liveClock(m){ if (!m.live) m.live = {run:false, base:0, at:0, half:1, halfLen:45}; return m.live; }
-function nowSec(m){ const c = liveClock(m); return c.run ? c.base + (Date.now() - c.at)/1000 : c.base; }
+function nowSec(m){ if (vpOn() && m === current()) return vpToT(m, VP.el.currentTime); const c = liveClock(m); return c.run ? c.base + (Date.now() - c.at)/1000 : c.base; }
 const mmss = s => { s = Math.max(0, Math.floor(s)); return String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0"); };
 // Temps de match : la 1re MT continue au-delà de 45 min (temps additionnel) jusqu'au coup d'envoi de la 2e MT, sans bascule automatique.
 // La timeline reste continue ; k2at = instant (timeline) du coup d'envoi de la 2e MT.
@@ -2121,6 +2149,7 @@ function cwClockInner(a){
   else if (a === "resume"){ c.run = true; c.at = now; }
   else if (a === "end"){ const t = nowSec(m); c.base = t; c.run = false; m.events.forEach(e => { if (e.live && e.e == null) e.e = t; }); }
   else if (a === "+10" || a === "-10" || a === "+60" || a === "-60"){ c.base = Math.max(0, c.base + Number(a)); }
+  vpClock(m, c, a);
   persist(m); render();
   if (a === "k1" || a === "k2" || a === "end1" || a === "resume" || a === "pause" || a === "end") cwBanner(m, null, [], [], [], {k1:"Timeline lancée · 1re mi-temps", k2:"Coup d'envoi · 2e mi-temps", end1:"Fin de la 1re mi-temps", resume:"Reprise", pause:"Pause", end:"Fin du match"}[a]);
 }
@@ -2196,12 +2225,12 @@ document.addEventListener("pointerdown", (evt) => {
   const x0 = evt.clientX; let moved = false; state.tlDrag = true;
   const mv = e => { const dx = e.clientX - x0; if (!moved && Math.abs(dx) < 4) return; moved = true; els.forEach(([el, l]) => { el.style.left = (l + dx) + "px"; el.classList.add("sel"); }); };
   const up = e => { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); state.tlDrag = false;
-    if (!moved){ state.tlDragged = true; setTimeout(() => { state.tlDragged = false; }, 300); tlSelect(id, e.shiftKey || e.ctrlKey || e.metaKey); return; }
+    if (!moved){ state.tlDragged = true; setTimeout(() => { state.tlDragged = false; }, 300); tlSelect(id, e.shiftKey || e.ctrlKey || e.metaKey); const e0 = m.events.find(x => x.id === id); if (e0 && state.cwSel === id) vpSeek(m, (e0.t || 0) - 2); return; }
     state.tlDragged = true; setTimeout(() => { state.tlDragged = false; }, 300);
     const d = Math.round((e.clientX - x0)/sc*10)/10; if (!(ids.includes(state.cwSel))) { state.tlSel = ids; state.cwSel = ids[0]; } tlShift(m, ids, d); persist(m); render(); };
   document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
 });
-function tlMoveTo(m, t, track){ const c = liveClock(m); t = Math.max(0, t); if (track) c.shift = (c.shift || 0) + (t - nowSec(m)); c.base = t; c.at = Date.now(); }
+function tlMoveTo(m, t, track){ const c = liveClock(m); t = Math.max(0, t); if (track) c.shift = (c.shift || 0) + (t - nowSec(m)); c.base = t; c.at = Date.now(); vpSeek(m, t); }
 document.addEventListener("pointerdown", (evt) => {
   const h = evt.target.closest && evt.target.closest("#tl-head .tl-knob, #tl-head, #cw-tl .tl-axis"); if (!h || evt.button !== 0 || state.view !== "codage") return;
   const tl = $("#cw-tl"), content = tl && tl.querySelector(".tl-content"); if (!content) return;
@@ -2371,7 +2400,7 @@ function renderCodage(m){
         <label class="hint" for="cw-half">Mi-temps</label><select class="f" id="cw-half" data-act="cw-half">${[45,40,35,30].map(v => `<option value="${v}" ${c.halfLen===v?"selected":""}>${v} min</option>`).join("")}</select>
       </div>
       <div class="spacer" style="flex:1"></div>
-      <div class="toolbar"><button class="btn" data-act="cw-stopall" title="Touche TAB">Tout couper (TAB)</button><button class="btn" data-act="cw-undo" title="Ctrl+Z">Annuler la dernière action</button><button class="btn" data-act="cw-video" aria-pressed="${!!state.cwVideo}">Calage vidéo</button><select class="f" id="cw-xmlhalf" aria-label="Partie du match à exporter"><option value="0" ${!state.xmlHalf ? "selected" : ""}>Export : match entier</option><option value="1" ${state.xmlHalf === 1 ? "selected" : ""}>Export : mi-temps 1</option><option value="2" ${state.xmlHalf === 2 ? "selected" : ""}>Export : mi-temps 2</option></select><label class="hint" style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="cw-xmlnum" ${state.xmlNum !== false ? "checked" : ""}> Titres courts</label><button class="btn" data-act="cw-xml">Exporter XML Sportscode</button><button class="btn" data-act="cw-xml" data-fmt="lm" title="Une ligne par code, labels en étiquettes">Exporter XML LongoMatch</button></div>
+      <div class="toolbar"><button class="btn" data-act="cw-stopall" title="Touche TAB">Tout couper (TAB)</button><button class="btn" data-act="cw-undo" title="Ctrl+Z">Annuler la dernière action</button><button class="btn" data-act="cw-vp" aria-pressed="${!!state.vpOpen}">🎬 Vidéo du match</button><button class="btn" data-act="cw-video" aria-pressed="${!!state.cwVideo}">Calage vidéo</button><select class="f" id="cw-xmlhalf" aria-label="Partie du match à exporter"><option value="0" ${!state.xmlHalf ? "selected" : ""}>Export : match entier</option><option value="1" ${state.xmlHalf === 1 ? "selected" : ""}>Export : mi-temps 1</option><option value="2" ${state.xmlHalf === 2 ? "selected" : ""}>Export : mi-temps 2</option></select><label class="hint" style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="cw-xmlnum" ${state.xmlNum !== false ? "checked" : ""}> Titres courts</label><button class="btn" data-act="cw-xml">Exporter XML Sportscode</button><button class="btn" data-act="cw-xml" data-fmt="lm" title="Une ligne par code, labels en étiquettes">Exporter XML LongoMatch</button></div>
     </div>
     ${state.cwVideo ? `<div class="cw-video"><b>Calage sur ta vidéo</b><label class="hint" for="cw-v1">Coup d'envoi 1re MT à</label><input type="text" id="cw-v1" placeholder="15:00" value="${m.video && m.video.v1 != null ? mmss(m.video.v1) : ""}" style="width:80px"><label class="hint" for="cw-v2">Coup d'envoi 2e MT à</label><input type="text" id="cw-v2" placeholder="75:30" value="${m.video && m.video.v2 != null ? mmss(m.video.v2) : ""}" style="width:80px"><span class="hint">(temps dans la vidéo source, mm:ss). Les exports XML sont recalés : la 1re MT part du 1er temps, la 2e MT du 2e, la pause de mi-temps est sautée.</span></div>` : ""}
     <div class="cw-ctx" style="margin-top:10px">${ctx.map(([g,v]) => `<span class="pill">${esc(g)} : ${esc(v)}</span>`).join("")}<button class="btn sm" data-act="edit-match">Modifier</button>
@@ -2498,10 +2527,57 @@ function fitCodage(){
 window.addEventListener("resize", fitCodage);
 setInterval(() => {
   if (state.view !== "codage") return; const el = $("#cw-clock"); if (!el) return;
-  const m = current(); const c = liveClock(m); if (!c.run) return;
+  const m = current(); const c = liveClock(m); if (!c.run && !vpOn()) return;
   el.firstChild.nodeValue = clockLabel(m, nowSec(m)); if (matchTime(m, nowSec(m)).extra > 0 && !el.dataset.x){ el.dataset.x = 1; render(); }
   const tl = $("#cw-tl"); if (tl && !state.tlDrag && (state.tlTick = (state.tlTick || 0) + 1) % 2 === 0){ const sl = tl.scrollLeft, st = tl.scrollTop; tl.innerHTML = timelineHTML(m); tl.scrollLeft = sl; tl.scrollTop = st; tlFollow(); }
 }, 500);
+// Lecteur vidéo : coder en regardant le match. La vidéo pilote le chrono (temps timeline = calage vidéo inversé)
+var VP = {url:null, name:"", el:null};
+function vpOn(){ return !!(VP && VP.el && VP.url && state.vpLink !== false); }
+function vpToT(m, vt){ const v = m.video || {}, k2 = k2At(liveClock(m));
+  if (v.v2 != null && k2 != null && vt >= v.v2) return k2 + (vt - v.v2);
+  return Math.max(0, vt - (v.v1 || 0)); }
+function vpSeek(m, t){ if (!vpOn() || m !== current()) return; VP.el.currentTime = Math.max(0, vidT(m, Math.max(0, t))); }
+function vpClock(m, c, a){ if (!vpOn()) return; const el = VP.el, vt = el.currentTime;
+  if (a === "k1"){ m.video = {...(m.video || {}), v1: vt, v2: null}; c.k2at = null; el.play(); }
+  else if (a === "k2"){ m.video = {...(m.video || {}), v2: vt}; c.k2at = Math.max(0, vt - ((m.video || {}).v1 || 0)); el.play(); }
+  else if (a === "pause" || a === "end1" || a === "end") el.pause();
+  else if (a === "resume") el.play();
+  else if (/^[+-]\d+$/.test(a)) el.currentTime = Math.max(0, vt + Number(a));
+}
+function vpBuild(){ if (VP.el) return document.getElementById("vp");
+  const d = document.createElement("div"); d.id = "vp"; d.className = "vp"; d.hidden = true;
+  d.innerHTML = `<div class="vp-bar"><b>🎬 Vidéo</b><span class="vp-name"></span><button type="button" data-vp="min" title="Réduire / agrandir">–</button><button type="button" data-vp="close" title="Fermer (la vidéo reste chargée)">✕</button></div>
+  <div class="vp-body"><div class="vp-empty"><button type="button" class="btn primary" data-vp="open">Ouvrir la vidéo du match…</button><p>Formats : MP4 (H.264) conseillé, WebM, MOV/M4V (H.264).<br>MKV, AVI ou HEVC : convertir d'abord en MP4 (ex. HandBrake).</p></div>
+  <video playsinline preload="auto" hidden></video>
+  <input type="range" class="vp-seek" min="0" max="1000" value="0" hidden aria-label="Position dans la vidéo">
+  <div class="vp-ctl" hidden><button type="button" data-vp="-10">−10s</button><button type="button" data-vp="-3">−3s</button><button type="button" data-vp="-0.04" title="Image précédente">‹</button><button type="button" data-vp="play" class="vp-play">▶</button><button type="button" data-vp="+0.04" title="Image suivante">›</button><button type="button" data-vp="+3">+3s</button><button type="button" data-vp="+10">+10s</button>
+  <select data-vp="rate" aria-label="Vitesse">${[0.25,0.5,0.75,1,1.5,2,4].map(r => `<option value="${r}" ${r === 1 ? "selected" : ""}>×${r}</option>`).join("")}</select><span class="vp-t">00:00</span>
+  <button type="button" data-vp="k1" title="Cale le coup d'envoi 1re MT sur l'image affichée">Coup d'envoi ici</button><label style="display:inline-flex;gap:3px;align-items:center"><input type="checkbox" data-vp="link" checked> Lier au chrono</label><button type="button" data-vp="open">Changer…</button></div></div>
+  <input type="file" accept="video/*,.mp4,.m4v,.mov,.webm" hidden>`;
+  document.body.appendChild(d); const v = d.querySelector("video"), f = d.querySelector("input[type=file]"), sk = d.querySelector(".vp-seek"); VP.el = v;
+  f.addEventListener("change", () => { const file = f.files && f.files[0]; if (!file) return; if (VP.url) URL.revokeObjectURL(VP.url); VP.url = URL.createObjectURL(file); VP.name = file.name; v.src = VP.url; f.value = ""; vpSync(); });
+  v.addEventListener("error", () => { if (!VP.url) return; toast("Format vidéo non lu par l'appli. Convertis en MP4 (H.264) puis réessaie.", 6000); URL.revokeObjectURL(VP.url); VP.url = null; vpSync(); });
+  v.addEventListener("loadedmetadata", () => { const m = current(); toast(`Vidéo chargée : ${VP.name}`, 1500); vpSync(); if (m.video && m.video.v1 != null) v.currentTime = m.video.v1; });
+  const st = () => { const m = current(), c = liveClock(m); if (vpOn()){ c.run = !v.paused; c.base = nowSec(m); c.at = Date.now(); } d.querySelector(".vp-play").textContent = v.paused ? "▶" : "⏸"; if (state.view === "codage") render(); };
+  v.addEventListener("play", st); v.addEventListener("pause", st);
+  v.addEventListener("timeupdate", () => { d.querySelector(".vp-t").textContent = mmss(v.currentTime) + " / " + mmss(v.duration || 0); if (!sk.matches(":active")) sk.value = v.duration ? Math.round(v.currentTime / v.duration * 1000) : 0; });
+  sk.addEventListener("input", () => { if (v.duration) v.currentTime = sk.value / 1000 * v.duration; });
+  d.addEventListener("click", e => { const b = e.target.closest("[data-vp]"); if (!b || b.tagName === "SELECT" || b.tagName === "INPUT") return; const k = b.dataset.vp, m = current();
+    if (k === "open") f.click(); else if (k === "close"){ state.vpOpen = false; v.pause(); vpSync(); render(); } else if (k === "min") d.classList.toggle("min");
+    else if (k === "play") v.paused ? v.play() : v.pause();
+    else if (k === "k1"){ m.video = {...(m.video || {}), v1: v.currentTime}; persist(m); toast(`Coup d'envoi 1re MT calé à ${mmss(v.currentTime)} dans la vidéo.`, 2000); render(); }
+    else if (/^[+-][\d.]+$/.test(k)){ v.pause(); v.currentTime = Math.max(0, v.currentTime + Number(k)); } });
+  d.addEventListener("change", e => { const k = e.target.dataset.vp; if (k === "rate") v.playbackRate = Number(e.target.value); else if (k === "link"){ state.vpLink = e.target.checked; render(); } });
+  const bar = d.querySelector(".vp-bar"); bar.addEventListener("pointerdown", e => { if (e.target.closest("button")) return; const r = d.getBoundingClientRect(), x0 = e.clientX - r.left, y0 = e.clientY - r.top;
+    const mv = ev => { d.style.left = Math.max(0, Math.min(innerWidth - 80, ev.clientX - x0)) + "px"; d.style.top = Math.max(0, Math.min(innerHeight - 30, ev.clientY - y0)) + "px"; d.style.right = d.style.bottom = "auto"; };
+    const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); }; addEventListener("pointermove", mv); addEventListener("pointerup", up); });
+  return d; }
+function vpSync(){ if (!state.vpOpen && !VP.el) return; const d = vpBuild(), has = !!VP.url;
+  d.hidden = !(state.vpOpen && state.view === "codage");
+  d.querySelector(".vp-empty").hidden = has; ["video", ".vp-ctl", ".vp-seek"].forEach(q => d.querySelector(q).hidden = !has);
+  d.querySelector(".vp-name").textContent = VP.name || ""; d.querySelector("[data-vp=link]").checked = state.vpLink !== false;
+  if (d.hidden && VP.el && !VP.el.paused) VP.el.pause(); }
 // Export LongoMatch : le nom de l'action = le code seul (une ligne par code) ; les descripteurs vont seulement dans la remarque (LongoMatch les colle sinon au nom)
 // Calage vidéo : temps du coup d'envoi de chaque MT dans la vidéo source ; la pause de mi-temps est « gelée » dans l'appli
 function vidT(m, t){
@@ -2590,6 +2666,7 @@ document.addEventListener("click", async (evt) => {
   else if (a === "tl-row"){ const ids = m.events.filter(e => e.live && inWin(e) && tlKey(e) === t.dataset.k).sort((x,y) => x.t - y.t).map(e => e.id); if (!ids.length) return;
     state.tlSel = ids; state.cwSel = ids[0]; tlMoveTo(m, pressTime(m.events.find(e => e.id === ids[0])), true); persist(m); render(); toast(`${ids.length} séquence${ids.length > 1 ? "s" : ""} sélectionnée${ids.length > 1 ? "s" : ""} · TAB = suivante, Maj+TAB = précédente`, 2500); }
   else if (a === "cw-float"){ state.cwFloat = t.dataset.v; render(); }
+  else if (a === "cw-vp"){ state.vpOpen = !state.vpOpen; vpSync(); render(); }
   else if (a === "cw-video"){ state.cwVideo = !state.cwVideo; render(); }
   else if (a === "tl-unsel"){ state.tlSel = []; state.cwSel = null; render(); }
   else if (a === "cw-link-pl"){ cwLinkPlayer(m, cwColTarget(m), Number(t.dataset.bi)); persist(m); render(); }
@@ -2811,6 +2888,8 @@ document.addEventListener("submit", async (evt) => {
 document.addEventListener("submit", (evt) => { if (evt.target.id === "ai-form"){ evt.preventDefault(); aiSend($("#ai-input").value); } });
 document.addEventListener("keydown", (evt) => { if (evt.target.id === "ai-input" && evt.key === "Enter" && !evt.shiftKey){ evt.preventDefault(); aiSend(evt.target.value); } });
 
+{ const _r = render; render = function(){ _r(); vpSync(); }; }
+window.__vp = {VP, now: () => nowSec(current()), m: () => current(), clock: () => liveClock(current())};
 initStorage();
 })();
 </script>
