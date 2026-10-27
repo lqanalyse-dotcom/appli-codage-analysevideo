@@ -109,11 +109,11 @@ main{padding-block:18px 84px;display:grid;gap:16px}
 .duel .lbl{text-align:center;font-size:12px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--ink-2)}
 .duel .bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--surface-2);gap:2px}
 .duel .bar i{display:block;height:100%}
-.duel .bar .us{background:var(--pau)}
+.duel .bar .us{background:var(--us,var(--pau))}
 .duel .bar .them{background:var(--opp)}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--ink-2);align-items:center}
 .legend .sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:5px}
-.sw.us{background:var(--pau)}.sw.them{background:var(--opp)}
+.sw.us{background:var(--us,var(--pau))}.sw.them{background:var(--opp)}
 
 /* KPI */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
@@ -160,11 +160,11 @@ table.t td{padding:6px 8px;border-bottom:1px solid var(--line);font-variant-nume
 table.t td.n{text-align:right;font-family:var(--f-display);font-weight:700;font-size:16px}
 .tscroll{overflow-x:auto}
 .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;background:var(--surface-2);color:var(--ink-2)}
-.pill.us{background:var(--pau);color:#0a1f4f}
+.pill.us{background:var(--us,var(--pau));color:#0a1f4f}
 .pill.them{background:var(--opp);color:var(--opp-ink)}
 .pill.good{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
 .pill.bad{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
-.minibar{height:8px;border-radius:4px;background:var(--pau);min-width:2px}
+.minibar{height:8px;border-radius:4px;background:var(--us,var(--pau));min-width:2px}
 details.model{font-size:14px;color:var(--ink-2);margin-top:10px}
 details.model summary{cursor:pointer;font-weight:600;color:var(--ink)}
 details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px;font-size:13px}
@@ -247,6 +247,10 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .tl-mark span{position:absolute;top:24px;left:3px;background:var(--good);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap}
 .cw-video{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
 .cw-float{position:fixed;right:16px;bottom:16px;width:min(420px,calc(100% - 32px));max-height:calc(100vh - 120px);overflow:auto;z-index:45;box-shadow:0 12px 40px rgba(0,0,0,.35);border:2px solid var(--pau)}
+.pal-list{display:flex;flex-wrap:wrap;gap:6px}
+.pal{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:4px 8px;cursor:pointer;font-size:12px;color:var(--ink)}
+.pal i{width:14px;height:14px;border-radius:4px;display:inline-block;border:1px solid rgba(0,0,0,.15)}
+.pal.on{outline:2px solid var(--focus)}
 .cw-float.big{width:min(820px,calc(100% - 32px))}
 .cw-float.min{max-height:none}.cw-float.min > :not(.cw-float-bar){display:none}
 .cw-float-bar{display:flex;align-items:center;gap:8px;margin:-4px 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);position:sticky;top:-16px;background:var(--surface);z-index:1}
@@ -1141,7 +1145,7 @@ function shotMarker(s, color, mirror, selected, print=false){
 }
 function shotMapSVG(m, {editing=false, sel=null, hover=null, print=false, onlyUs=false, shots=null}={}){
   const list = shots || m.shots;
-  const opp = m.oppColor || "#d7263d", pau = print ? "#f6c400" : "var(--pau)";
+  const opp = themCol(m), pau = print ? usPrint() : "var(--us,var(--pau))";
   const pl = print ? pitchLines().replaceAll("var(--pitch-line)","#b9c6bb").replaceAll("var(--pitch-stripe)","#eef4ee").replaceAll("var(--pitch)","#f6faf6") : pitchLines();
   let marks = "";
   list.forEach(s => { marks += shotMarker(s, s.tm === "us" ? pau : opp, s.tm !== "us", sel === s.id, print); });
@@ -1207,7 +1211,7 @@ function xgChartSVG(m, print=false){
   ticks.forEach(v => grid += `<text x="${X(v)}" y="${h-6}" text-anchor="middle" font-size="9" fill="${ink2}">${v}'</text>`);
   if (!timed) grid += `<text x="${(w+pad.l)/2}" y="${h-6}" text-anchor="middle" font-size="9" fill="${ink2}">tirs dans l'ordre de saisie</text>`;
   const path = pts => pts.map((p,i) => (i ? "L" : "M") + X(p.x).toFixed(1) + " " + Y(p.y).toFixed(1)).join(" ");
-  const col = {us: print ? "#c99f00" : "var(--pau-deep)", them: m.oppColor || "#d7263d"};
+  const col = {us: print ? usPrint() : "var(--us,var(--pau-deep))", them: themCol(m)};
   let lines = "";
   for (const tm of ["them","us"]){
     lines += `<path d="${path(series[tm])}" fill="none" stroke="${col[tm]}" stroke-width="2.4" stroke-linejoin="round"/>`;
@@ -1223,7 +1227,7 @@ function periodSVG(data, opp){
   const bw = (w - pad.l - pad.r)/6; let g = "";
   data.forEach((d,i) => {
     const x = pad.l + i*bw; const hu = (h-pad.t-pad.b)*d.us/max, ht = (h-pad.t-pad.b)*d.them/max;
-    g += `<rect x="${x+bw*.14}" y="${h-pad.b-hu}" width="${bw*.34}" height="${hu}" rx="2" fill="var(--pau)"/>
+    g += `<rect x="${x+bw*.14}" y="${h-pad.b-hu}" width="${bw*.34}" height="${hu}" rx="2" fill="var(--us,var(--pau))"/>
       <rect x="${x+bw*.52}" y="${h-pad.b-ht}" width="${bw*.34}" height="${ht}" rx="2" fill="${opp}"/>
       <text x="${x+bw*.31}" y="${h-pad.b-hu-3}" text-anchor="middle" font-size="9" fill="var(--ink)">${d.us||""}</text>
       <text x="${x+bw*.69}" y="${h-pad.b-ht-3}" text-anchor="middle" font-size="9" fill="var(--ink)">${d.them||""}</text>
@@ -1267,7 +1271,7 @@ function duelHTML(label, a, b, f){
     <div class="v r ${lead<=0?'lead':'trail'}">${f(b)}</div></div>`;
 }
 function headerHTML(m, st){
-  const oc = m.oppColor || "#d7263d";
+  const oc = themCol(m);
   const clubLogo = state.settings.clubLogo ? `<img src="${blobUrl(state.settings.clubLogo)}" alt="">` : "PAU";
   const oppLogo = m.oppLogo ? `<img src="${blobUrl(m.oppLogo)}" alt="">` : esc((m.opponent||"ADV").slice(0,3).toUpperCase());
   const home = `<div class="team"><div class="badge" style="background:#f6c400;color:#0a1f4f">${clubLogo}</div><div><div class="name">Pau FC</div><div class="meta">${m.venue === "ext" ? "Extérieur" : "Domicile"}</div></div></div>`;
@@ -1288,7 +1292,7 @@ function sampleNote(m){
 
 function halfBar(){ return `<div class="half-bar">${halfSegHTML()}${state.half ? `<span class="hint">Affichage limité à la ${state.half === 1 ? "1re" : "2e"} mi-temps. Les statistiques saisies à la main ou importées en total restent celles du match entier.</span>` : ""}</div>`; }
 function renderCollectif(m){
-  const st = teamStats(m), opp = m.oppColor || "#d7263d";
+  const st = teamStats(m), opp = themCol(m);
   const zr = zoneCounts(m, "recup"), zp = zoneCounts(m, "perte");
   const eu = entryCounts(m, "us"), et = entryCounts(m, "them");
   const rows = duelRows(m, st);
@@ -1308,7 +1312,7 @@ function renderCollectif(m){
     </section>
     <section class="panel c5"><div class="ph"><h2>Entrées dans les 20 m</h2><span class="sub">par couloir d'entrée</span></div>
       <div class="two">
-        <div><div class="eyebrow">Pau FC · ${eu.total}</div>${entriesSVG(eu, "var(--pau)", "us", state.entryEdit)}</div>
+        <div><div class="eyebrow">Pau FC · ${eu.total}</div>${entriesSVG(eu, "var(--us,var(--pau))", "us", state.entryEdit)}</div>
         <div><div class="eyebrow">${esc(m.opponent || "Adversaire")} · ${et.total}</div>${entriesSVG(et, opp, "them", state.entryEdit)}</div>
       </div>
       ${eu.total + et.total && eu.tagged + et.tagged < eu.total + et.total ? `<p class="hint">${eu.total + et.total - eu.tagged - et.tagged} entrées sans couloir (labels GAUCHE / AXE / DROITE).</p>` : ""}
@@ -1316,7 +1320,7 @@ function renderCollectif(m){
     </section>
 
     <section class="panel c6"><div class="ph"><h2>Récupérations Pau</h2><span class="sub">${zr.total} au total · où Pau gagne le ballon</span></div>
-      ${zoneGridSVG(zr, "var(--pau)", {editing: zEdit === "recup", kind:"recup"})}${zoneHint(zr)}${zoneToolbar("recup", zr)}</section>
+      ${zoneGridSVG(zr, "var(--us,var(--pau))", {editing: zEdit === "recup", kind:"recup"})}${zoneHint(zr)}${zoneToolbar("recup", zr)}</section>
     <section class="panel c6"><div class="ph"><h2>Pertes Pau</h2><span class="sub">${zp.total} au total · où ${esc(m.opponent || "l'adversaire")} récupère</span></div>
       ${zoneGridSVG(zp, opp, {editing: zEdit === "perte", kind:"perte"})}${zoneHint(zp)}${zoneToolbar("perte", zp)}</section>
 
@@ -1335,7 +1339,7 @@ function renderCollectif(m){
         <p>xG = 1 / (1 + e<sup>−z</sup>). Exemple : frappe du pied à 11 m dans l'axe avec seulement le gardien devant ≈ 0,26 ; même frappe avec 3 adversaires ≈ 0,14.</p></details>
     </section>
     <section class="panel c12"><div class="ph"><h2>Finition</h2><span class="sub">cadrés, non cadrés, contrés · surface / hors surface d'après la position du tir</span></div>
-      <div class="two">${[["us","Pau FC","var(--pau)"],["them", m.opponent || "Adversaire", opp]].map(([tm, nm, col]) => { const f = finitionStats(m, tm);
+      <div class="two">${[["us","Pau FC","var(--us,var(--pau))"],["them", m.opponent || "Adversaire", opp]].map(([tm, nm, col]) => { const f = finitionStats(m, tm);
         return `<div><div class="eyebrow">${esc(nm)} · ${f.total} tir${f.total>1?"s":""}</div><div class="half-map" style="max-width:340px;margin:6px auto 0">${finitionSVG(m, f, col)}</div>${finitionBars(f, col)}</div>`; }).join("")}</div></section>
     <section class="panel c4"><div class="ph"><h2>xG cumulés</h2><span class="sub">● = but</span></div>
       ${m.shots.length ? xgChartSVG(m) : `<div class="empty">Aucun tir positionné pour l'instant.</div>`}
@@ -1435,8 +1439,8 @@ function renderIndiv(m){
         ${ps.shots.map(s => `<tr><td>${s.min ?? "–"}${s.min!=null?"'":""}</td><td>${BODY[s.body]}</td><td>${s.opp}</td><td>${SIT[s.sit]}</td><td><span class="pill ${s.res==='but'?'us':''}">${RES[s.res]}</span></td><td class="n">${fmt1(xgOf(s))}</td></tr>`).join("")}</tbody></table></div>` : ""}
     </section>
     ${ps.indN ? `<section class="panel c12"><div class="ph"><h2>Codage indiv</h2><span class="sub">${ps.indN} séquence${ps.indN>1?"s":""} codée${ps.indN>1?"s":""} depuis la fenêtre indiv</span></div>${indivTableHTML(ps.ind)}</section>` : ""}
-    <section class="panel c6"><div class="ph"><h2>Ses récupérations</h2><span class="sub">${ps.zr.total}</span></div>${zoneGridSVG(ps.zr, "var(--pau)")}${ps.zr.total && !ps.zr.tagged ? `<p class="hint">Récupérations sans zone codée.</p>` : ""}</section>
-    <section class="panel c6"><div class="ph"><h2>Ses pertes</h2><span class="sub">${ps.zp.total}</span></div>${zoneGridSVG(ps.zp, m.oppColor || "#d7263d")}${ps.zp.total && !ps.zp.tagged ? `<p class="hint">Pertes sans zone codée.</p>` : ""}</section>
+    <section class="panel c6"><div class="ph"><h2>Ses récupérations</h2><span class="sub">${ps.zr.total}</span></div>${zoneGridSVG(ps.zr, "var(--us,var(--pau))")}${ps.zr.total && !ps.zr.tagged ? `<p class="hint">Récupérations sans zone codée.</p>` : ""}</section>
+    <section class="panel c6"><div class="ph"><h2>Ses pertes</h2><span class="sub">${ps.zp.total}</span></div>${zoneGridSVG(ps.zp, themCol(m))}${ps.zp.total && !ps.zp.tagged ? `<p class="hint">Pertes sans zone codée.</p>` : ""}</section>
     <section class="panel c6"><div class="ph"><h2>Actions</h2><span class="sub">liées par chevauchement du tag joueur</span></div>
       ${actions.length ? `<div class="tscroll" style="max-height:340px;overflow:auto"><table class="t"><tbody>${actions.map(([k,v]) => `<tr><td>${esc(k)}</td><td style="width:45%"><div class="minibar" style="width:${v/amax*100}%"></div></td><td class="n">${v}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">Aucune action liée.</div>`}</section>
     <section class="panel c6"><div class="ph"><h2>${extraRows.length ? "Données importées" : "Remarques"}</h2></div>
@@ -1459,7 +1463,7 @@ function renderDocs(){
     </section>
     <section class="panel c12"><div class="ph"><h2>Matchs enregistrés</h2><span class="sub">${matches.length} match${matches.length>1?"s":""}</span></div>
       ${matches.length ? `<div class="tscroll"><table class="t"><thead><tr><th>Match</th><th>Date</th><th>Source</th><th style="text-align:right">Score</th><th></th></tr></thead><tbody>${matches.map(mm => { const st = teamStats(mm);
-        return `<tr><td><span class="pill them" style="--opp:${mm.oppColor};--opp-ink:${inkOn(mm.oppColor||'#d7263d')}">${esc(mm.opponent || "?")}</span> ${esc(mm.title)}</td><td>${esc(mm.date || "–")}</td><td>${esc(mm.source ? mm.source.format : "Saisie")}</td><td class="n">${st.us.goals}–${st.them.goals}</td>
+        return `<tr><td><span class="pill them" style="--opp:${themCol(mm)};--opp-ink:${inkOn(themCol(mm))}">${esc(mm.opponent || "?")}</span> ${esc(mm.title)}</td><td>${esc(mm.date || "–")}</td><td>${esc(mm.source ? mm.source.format : "Saisie")}</td><td class="n">${st.us.goals}–${st.them.goals}</td>
         <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-act="open-match" data-id="${mm.id}">Ouvrir</button> <button class="btn sm" data-act="export-json" data-id="${mm.id}">Exporter</button> <button class="btn sm danger" data-act="del-match" data-id="${mm.id}">Supprimer</button></td></tr>`; }).join("")}</tbody></table></div>`
         : `<div class="empty">Aucun match enregistré. Importe un fichier ou crée un match vide pour saisir à la main.</div>`}
       <div class="toolbar" style="margin-top:12px"><button class="btn primary" data-act="import">Importer un match</button><button class="btn" data-act="new-match">Créer un match vide</button>
@@ -1470,13 +1474,18 @@ function renderDocs(){
 }
 
 // Paramètres d'apparence (réglages de l'application) : thème, couleurs de l'appli et du PDF
-const THEME_DEF = {mode:"auto", bg:"", navy:"", pau:"", pdfMain:"#0a1f4f", pdfAcc:"#f6c400", pdfBg:"#ffffff"};
+const THEME_DEF = {mode:"auto", bg:"", navy:"", pau:"", pdfMain:"#0a1f4f", pdfAcc:"#f6c400", pdfBg:"#ffffff", dataUs:"", dataThem:""};
+// Couleurs des données : Pau / adversaire (vide = jaune Pau et couleur adversaire du match)
+const DATA_PALETTES = [["Pau (jaune / couleur adv.)","",""],["Jaune / rouge","#f6c400","#d7263d"],["Bleu / orange","#2a78d6","#eb6834"],["Vert / violet","#1baf7a","#7b2cbf"],["Bleu nuit / rouge","#0a1f4f","#d03b3b"],["Turquoise / rose","#1b998b","#e87ba4"],["Noir / gris","#111111","#9aa0aa"]];
+const usPrint = () => (state.settings.theme || {}).dataUs || "#f6c400";
+const themCol = m => (state.settings.theme || {}).dataThem || (m && m.oppColor) || "#d7263d";
 function rptVars(el){ const t = {...THEME_DEF, ...(state.settings.theme || {})}; el.style.setProperty("--rpt-main", t.pdfMain); el.style.setProperty("--rpt-acc", t.pdfAcc); el.style.setProperty("--rpt-bg", t.pdfBg); }
 function applyTheme(){
   const t = {...THEME_DEF, ...(state.settings.theme || {})}, r = document.documentElement;
   if (t.mode === "auto") r.removeAttribute("data-theme"); else r.setAttribute("data-theme", t.mode);
   [["--bg", t.bg], ["--navy", t.navy], ["--pau", t.pau]].forEach(([k, v]) => v ? r.style.setProperty(k, v) : r.style.removeProperty(k));
   if (t.bg) document.body.style.background = t.bg; else document.body.style.removeProperty("background");
+  if (t.dataUs) r.style.setProperty("--us", t.dataUs); else r.style.removeProperty("--us");
   rptVars(r);
 }
 function openSettings(){
@@ -1487,22 +1496,28 @@ function openSettings(){
     <div class="cwe-sec" style="border:0;padding:0"><b>Logiciel</b>
       <label class="cwe-f"><span>Thème</span><select class="f" data-k="mode"><option value="auto" ${t.mode === "auto" ? "selected" : ""}>Automatique (comme l'ordinateur)</option><option value="light" ${t.mode === "light" ? "selected" : ""}>Clair</option><option value="dark" ${t.mode === "dark" ? "selected" : ""}>Sombre</option></select></label>
       <div class="cwe-grid">${col("bg","Couleur de fond", t.mode === "dark" ? "#081230" : "#eef1f7")}${col("navy","Couleur principale (bandeau)", "#0a1f4f")}${col("pau","Couleur d'accent", "#f6c400")}</div></div>
+    <div class="cwe-sec"><b>Couleurs des données</b><span class="hint">Graphiques, barres, terrains, PDF : Pau / adversaire.</span>
+      <div class="pal-list">${DATA_PALETTES.map(([nm, a, b], i) => `<button type="button" class="pal ${t.dataUs === a && t.dataThem === b ? "on" : ""}" data-pal="${i}"><i style="background:${a || "#f6c400"}"></i><i style="background:${b || "linear-gradient(135deg,#d7263d,#2e86ab)"}"></i>${esc(nm)}</button>`).join("")}</div>
+      <div class="cwe-grid"><label class="cwe-f"><span>Pau (libre)</span><input type="color" data-k="dataUs" value="${t.dataUs || "#f6c400"}"></label><label class="cwe-f"><span>Adversaire (libre)</span><input type="color" data-k="dataThem" value="${t.dataThem || "#d7263d"}"></label></div></div>
     <div class="cwe-sec"><b>PDF</b><div class="cwe-grid">${col("pdfMain","En-tête et titres", "#0a1f4f")}${col("pdfAcc","Accent (liseré, barres)", "#f6c400")}${col("pdfBg","Fond de page", "#ffffff")}</div></div>
     <div class="actions"><button class="btn danger" data-x="reset">Couleurs d'origine</button><span style="flex:1"></span><button class="btn" data-x="no">Annuler</button><button class="btn primary" data-x="ok">Enregistrer</button></div></div>`;
   document.body.appendChild(bg);
   const read = () => { const o = {}; bg.querySelectorAll("[data-k]").forEach(i => o[i.dataset.k] = i.value); return o; };
   const touched = new Set(); bg.addEventListener("input", e => { if (e.target.dataset.k) touched.add(e.target.dataset.k); });
   const save = async (theme) => { state.settings = {...state.settings, theme}; bg.remove(); render(); if (S.db){ try { await S.db.doc("settings/app").set(state.settings); } catch { toast("Paramètres non enregistrés pour l'instant."); } } toast("Paramètres enregistrés.", 1500); };
+  let pal = null;
+  bg.addEventListener("click", e => { const b = e.target.closest("[data-pal]"); if (!b) return; pal = DATA_PALETTES[+b.dataset.pal]; bg.querySelectorAll(".pal").forEach(x => x.classList.toggle("on", x === b)); touched.delete("dataUs"); touched.delete("dataThem");
+    bg.querySelector('[data-k="dataUs"]').value = pal[1] || "#f6c400"; bg.querySelector('[data-k="dataThem"]').value = pal[2] || "#d7263d"; });
   bg.querySelector('[data-x="no"]').onclick = () => bg.remove();
   bg.querySelector('[data-x="reset"]').onclick = () => save({...THEME_DEF});
-  bg.querySelector('[data-x="ok"]').onclick = () => { const o = read(), n = {...t, mode:o.mode, pdfMain:o.pdfMain, pdfAcc:o.pdfAcc, pdfBg:o.pdfBg}; ["bg","navy","pau"].forEach(k => { if (touched.has(k)) n[k] = o[k]; }); save(n); };
+  bg.querySelector('[data-x="ok"]').onclick = () => { const o = read(), n = {...t, mode:o.mode, pdfMain:o.pdfMain, pdfAcc:o.pdfAcc, pdfBg:o.pdfBg}; ["bg","navy","pau","dataUs","dataThem"].forEach(k => { if (touched.has(k)) n[k] = o[k]; }); if (pal && !touched.has("dataUs")) n.dataUs = pal[1]; if (pal && !touched.has("dataThem")) n.dataThem = pal[2]; save(n); };
 }
 function render(){
   applyTheme();
   const app = $("#app");
   const m = current();
   const st = teamStats(m);
-  const oc = m.oppColor || "#d7263d";
+  const oc = themCol(m);
   document.documentElement.style.setProperty("--opp", oc);
   document.documentElement.style.setProperty("--opp-ink", inkOn(oc));
   const list = [...state.matches.values()].sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
@@ -1747,7 +1762,7 @@ function openMatchModal(m){
     <div class="form">
       <label for="mm-title">Titre</label><input type="text" id="mm-title" value="${esc(m.title)}">
       <label for="mm-opp">Adversaire</label><input type="text" id="mm-opp" value="${esc(m.opponent)}" placeholder="Nom de l'équipe adverse">
-      <label for="mm-color">Couleur adversaire</label>${colorField("mm-color", m.oppColor || "#d7263d")}
+      <label for="mm-color">Couleur adversaire</label>${colorField("mm-color", themCol(m))}
       <label for="mm-date">Date</label><input type="date" id="mm-date" value="${esc(m.date)}">
       <label for="mm-comp">Compétition</label><input type="text" id="mm-comp" value="${esc(m.competition)}" placeholder="National, Coupe de France, U19…">
       <label for="mm-journee">Journée</label><input type="text" id="mm-journee" value="${esc(m.journee || "")}" placeholder="J26">
@@ -1818,11 +1833,11 @@ function openImportModal(results, fromDocId){
    ========================================================= */
 function reportHTML(m){
   m = halfView(m);
-  const st = teamStats(m), opp = m.oppColor || "#d7263d";
+  const st = teamStats(m), opp = themCol(m);
   const when = [m.competition, m.date ? new Date(m.date).toLocaleDateString("fr-FR") : ""].filter(Boolean).join(" · ");
   const head = (left, center, right) => `<div class="rh"><div>${left}</div><div>${center}</div><div style="text-align:right">${right}</div></div>`;
   const foot = `<div class="rf"><span>Pau FC · Cellule analyse</span><span>${esc(m.title)}${state.half ? ` · ${state.half === 1 ? "1re" : "2e"} mi-temps` : ""}${m.sample ? " · données fictives" : ""}</span><span>Généré le ${new Date().toLocaleDateString("fr-FR")}</span></div>`;
-  const d = (label, a, b, f) => { const tot = a+b, pa = tot ? a/tot*100 : 50; return `<div class="d"><b>${f(a)}</b><div><div class="l">${esc(label)}</div><div class="bb"><i style="display:block;width:${tot?pa:0}%;background:#f6c400"></i><i style="display:block;width:${tot?100-pa:0}%;background:${opp}"></i></div></div><b class="r">${f(b)}</b></div>`; };
+  const d = (label, a, b, f) => { const tot = a+b, pa = tot ? a/tot*100 : 50; return `<div class="d"><b>${f(a)}</b><div><div class="l">${esc(label)}</div><div class="bb"><i style="display:block;width:${tot?pa:0}%;background:${usPrint()}"></i><i style="display:block;width:${tot?100-pa:0}%;background:${opp}"></i></div></div><b class="r">${f(b)}</b></div>`; };
   if (state.view === "indiv" && state.player){
     const ps = state.scope === "season" ? mergeStats([...state.matches.values()].filter(x => (!x.sample || x.id === m.id) && playerList(x).includes(state.player)).map(x => playerStats(halfView(x), state.player))) : playerStats(m, state.player);
     const actions = Object.entries(ps.byAction).sort((a,b) => b[1]-a[1]).slice(0,14);
@@ -1836,7 +1851,7 @@ function reportHTML(m){
           ${ps.indN ? `<div class="box"><h4>Codage indiv · ${ps.indN}</h4><table>${Object.values(ps.ind).sort((a,b) => b.n - a.n).slice(0,14).map(x => `<tr><td>${esc(x.k)}</td><td class="n">${x.n}</td><td class="n">${x.ok + x.ko ? Math.round(x.ok/(x.ok + x.ko)*100) + " %" : ""}</td></tr>`).join("")}</table></div>` : `<div class="box"><h4>Actions</h4><table>${actions.map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${v}</td></tr>`).join("") || "<tr><td>Aucune action liée</td></tr>"}</table></div>`}</div>
         <div class="col"><div class="box"><h4>Tirs</h4>${shotMapSVG(m, {onlyUs:true, shots:ps.shots, print:true})}</div>
           ${ps.extra ? `<div class="box"><h4>Données importées</h4><table>${Object.entries(ps.extra).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${Number.isInteger(v)?v:fmt1(v)}</td></tr>`).join("")}</table></div>` : ""}</div>
-        <div class="col"><div class="box"><h4>Récupérations</h4>${zoneGridSVG(ps.zr, "#f6c400", {print:true})}</div><div class="box"><h4>Pertes</h4>${zoneGridSVG(ps.zp, opp, {print:true})}</div></div>
+        <div class="col"><div class="box"><h4>Récupérations</h4>${zoneGridSVG(ps.zr, usPrint(), {print:true})}</div><div class="box"><h4>Pertes</h4>${zoneGridSVG(ps.zp, opp, {print:true})}</div></div>
       </div>${foot}</div>`;
   }
   const rows = duelRows(m, st).slice(0, 16);
@@ -1848,8 +1863,8 @@ function reportHTML(m){
       <div class="col"><div class="box"><h4>Zones de tir · taille = xG</h4>${shotMapSVG(m, {print:true})}
         <table style="margin-top:4px;font-size:10.5px"><tr><td></td><td class="n">Tirs</td><td class="n">Cadrés</td><td class="n">Non cadrés</td><td class="n">Contrés</td><td class="n">Surface</td><td class="n">Hors surf.</td></tr>
         ${[["us","Pau"],["them","Adv."]].map(([tm,l]) => { const f = finitionStats(m, tm); return `<tr><td><b>${l}</b></td><td class="n">${f.total}</td><td class="n">${f.onTarget}</td><td class="n">${f.res.horscadre}</td><td class="n">${f.res.contre}</td><td class="n">${f.surf}</td><td class="n">${f.hors}</td></tr>`; }).join("")}</table></div>
-        <div class="ent" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="box"><h4>Entrées 20 m Pau · ${entryCounts(m,"us").total}</h4>${entriesSVG(entryCounts(m,"us"), "#f6c400", "us", false, true)}</div><div class="box"><h4>Entrées 20 m adv. · ${entryCounts(m,"them").total}</h4>${entriesSVG(entryCounts(m,"them"), opp, "them", false, true)}</div></div></div>
-      <div class="col"><div class="box"><h4>Récupérations Pau · ${zoneCounts(m,"recup").total}</h4>${zoneGridSVG(zoneCounts(m,"recup"), "#f6c400", {print:true})}</div>
+        <div class="ent" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="box"><h4>Entrées 20 m Pau · ${entryCounts(m,"us").total}</h4>${entriesSVG(entryCounts(m,"us"), usPrint(), "us", false, true)}</div><div class="box"><h4>Entrées 20 m adv. · ${entryCounts(m,"them").total}</h4>${entriesSVG(entryCounts(m,"them"), opp, "them", false, true)}</div></div></div>
+      <div class="col"><div class="box"><h4>Récupérations Pau · ${zoneCounts(m,"recup").total}</h4>${zoneGridSVG(zoneCounts(m,"recup"), usPrint(), {print:true})}</div>
         <div class="box"><h4>Pertes Pau · ${zoneCounts(m,"perte").total}</h4>${zoneGridSVG(zoneCounts(m,"perte"), opp, {print:true})}</div>
         ${m.shots.length ? `<div class="box"><h4>xG cumulés</h4>${xgChartSVG(m, true)}</div>` : ""}</div>
     </div>${foot}</div>`;
