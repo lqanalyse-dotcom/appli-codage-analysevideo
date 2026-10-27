@@ -249,6 +249,16 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .bip b{text-transform:uppercase;letter-spacing:.04em;font-size:11px}.bip strong{font-size:18px}.bip .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px}
 .bip .sw.us{background:var(--us,var(--pau))}.bip .sw.them{background:var(--opp)}
 .bip.p{font-size:9.5px;margin-top:6px;padding:5px 7px;gap:2px 10px}.bip.p strong{font-size:13px}
+.corner-wrap{display:grid;grid-template-columns:1fr 1fr;gap:18px}@media (max-width:800px){.corner-wrap{grid-template-columns:1fr}}
+.corner-col{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:4px 12px;align-items:start}
+.corner-h{grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;font-size:13px}.corner-h span{font-weight:700;font-size:16px}
+.corner-col .pitch-svg{max-height:300px}.cdot{cursor:pointer}
+.corner-leg{grid-column:1;display:flex;gap:10px;font-size:11px;color:var(--ink-2)}.corner-leg i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.corner-t{grid-column:2;grid-row:2/4;font-size:11.5px;width:100%;border-collapse:collapse}.corner-t td{padding:1.5px 4px}.corner-t td.n{text-align:right;font-variant-numeric:tabular-nums}.corner-t td:nth-child(3){color:var(--ink-2)}.corner-t tr.sep td{padding:2px;border-top:1px solid var(--line,rgba(127,127,127,.25))}
+.corner-form{display:grid;grid-template-columns:1fr 260px;gap:16px}.corner-form .row{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:8px}.corner-form .row .l{width:96px;font-size:12px;color:var(--ink-2)}
+.chip{border:1px solid var(--line,rgba(127,127,127,.35));background:transparent;color:inherit;border-radius:999px;padding:3px 10px;font:inherit;font-size:12px;cursor:pointer}.chip[aria-pressed="true"]{background:var(--us,var(--pau));color:#000;border-color:transparent;font-weight:600}
+.modal.wide{max-width:760px;width:96vw}
+.pdf-parts{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13px;margin:0 0 10px}.pdf-parts label{display:inline-flex;gap:4px;align-items:center;cursor:pointer}
 .vp{position:fixed;right:16px;bottom:16px;z-index:60;width:560px;min-width:300px;max-width:96vw;background:#0d1626;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.45);resize:both;overflow:hidden;display:flex;flex-direction:column}
 .vp[hidden]{display:none}
 .vp-bar{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--navy,#14213d);cursor:move;user-select:none;font-size:13px}
@@ -793,7 +803,7 @@ function shotHalf(m, s){
 }
 function halfView(m){
   const h = state.half; if (!h || !m) return m;
-  return {...m, events: m.events.filter(e => eventHalf(m, e) === h), shots: m.shots.filter(s => shotHalf(m, s) === h)};
+  return {...m, events: m.events.filter(e => eventHalf(m, e) === h), shots: m.shots.filter(s => shotHalf(m, s) === h), corners: (m.corners || []).filter(c => (c.half || 1) === h)};
 }
 function halfSegHTML(){ const h = state.half || 0; return `<div class="seg half-seg"><button data-act="half" data-v="0" aria-pressed="${!h}">Match entier</button><button data-act="half" data-v="1" aria-pressed="${h === 1}">Mi-temps 1</button><button data-act="half" data-v="2" aria-pressed="${h === 2}">Mi-temps 2</button></div>`; }
 function teamEvents(m){ return m.events.filter(e => !e.pl); }
@@ -1384,7 +1394,75 @@ function renderCollectif(m){
       ${periodSVG(st6, opp)}<p class="hint">Durée codée découpée en 6 tranches égales (3 par mi-temps environ).</p></section>
     <section class="panel c6"><div class="ph"><h2>Détail des actions codées</h2><span class="sub">${teamEvents(m).length} actions</span></div>
       ${actionTable(m)}</section>
+    ${cornersSectionHTML(m)}
   </div>`;
+}
+// CPA · corners : type (rentrant / sortant / joué à deux), point d'impact, premier au ballon, issues. Repère : attaque vers la droite.
+const CORNER_TYPES = [["in","Rentrant"],["out","Sortant"],["deux","Joué à deux"]];
+const CORNER_FIRST = [["us","Pau 1er au ballon"],["them","Adv. 1er au ballon"],["none","Personne"]];
+const CORNER_RES = [["tir","Tir"],["but","But"],["gb","Sortie du gardien"],["deg","Dégagé"],["b2us","2e ballon Pau"],["b2them","2e ballon adv."],["faute","Faute"],["sortie","Sortie de jeu"]];
+function cornerZone(c){ if (c.type === "deux" || c.x == null) return null; const dx = L - c.x, near = c.side === "g" ? c.y < W/2 : c.y > W/2;
+  if (dx > 16.5 || Math.abs(c.y - W/2) > 20.16) return "Hors surface";
+  if (dx <= 5.5 && Math.abs(c.y - W/2) <= 9.16) return Math.abs(c.y - W/2) <= 3.66 ? "6 m axe" : near ? "6 m 1er poteau" : "6 m 2e poteau";
+  if (dx <= 11 + 1.5 && Math.abs(c.y - W/2) <= 6) return "Point de penalty";
+  return near ? "Zone 1er poteau" : "Zone 2e poteau"; }
+const CORNER_ZONES = ["6 m 1er poteau","6 m axe","6 m 2e poteau","Zone 1er poteau","Point de penalty","Zone 2e poteau","Hors surface"];
+function cornerCodedTodo(m){ const used = new Set((current().corners || []).map(c => c.ev).filter(Boolean));
+  return teamEvents(m).filter(e => (e.k === "CORNER" || (e.k === "CPA" && hasL(e, "CORNER"))) && !used.has(e.id)); }
+function cornerMapSVG(list, color, print=false){
+  const pl = print ? pitchLines().replaceAll("var(--pitch-line)","#b9c6bb").replaceAll("var(--pitch-stripe)","#eef4ee").replaceAll("var(--pitch)","#f6faf6") : pitchLines();
+  const marks = list.filter(c => c.x != null).map(c => { const fy = c.side === "g" ? 0 : W, hollow = c.type === "out";
+    return `<line x1="${L}" y1="${fy}" x2="${c.x}" y2="${c.y}" stroke="${color}" stroke-width=".22" stroke-opacity=".35"/><circle cx="${c.x}" cy="${c.y}" r=".9" fill="${hollow ? "#fff" : color}" stroke="${color}" stroke-width=".4" ${(c.res || []).includes("but") ? 'stroke-dasharray="none" style="stroke:#111;stroke-width:.5"' : ""} data-cid="${c.id}" class="cdot"><title>${esc(CORNER_TYPES.find(t => t[0] === c.type)?.[1] || "")} · ${esc(cornerZone(c) || "")}</title></circle>`; }).join("");
+  return `${svgOpen(`${L-38} -2 40 ${W+4}`, "", 'data-role="cornermap"')}${pl}${marks}</svg>`; }
+function cornerStats(list){ const n = list.length, cnt = k => list.filter(c => (c.res || []).includes(k)).length, z = {};
+  list.forEach(c => { const k = cornerZone(c); if (k) z[k] = (z[k] || 0) + 1; });
+  return {n, type: Object.fromEntries(CORNER_TYPES.map(([k]) => [k, list.filter(c => c.type === k).length])), first: Object.fromEntries(CORNER_FIRST.map(([k]) => [k, list.filter(c => c.first === k).length])), res: Object.fromEntries(CORNER_RES.map(([k]) => [k, cnt(k)])), z}; }
+function cornerPanelHTML(m, tm, print=false){
+  const list = (m.corners || []).filter(c => c.tm === tm), color = tm === "us" ? (print ? usPrint() : "var(--us,var(--pau))") : themCol(m), cs = cornerStats(list);
+  const row = (l, v) => `<tr><td>${l}</td><td class="n">${v}</td><td class="n">${pct(v, cs.n)}</td></tr>`;
+  return `<div class="corner-col"><div class="corner-h"><b>${tm === "us" ? "Corners Pau" : "Corners " + esc(m.opponent || "adverses")}</b><span>${cs.n}</span></div>
+    ${cornerMapSVG(list, color, print)}
+    <div class="corner-leg"><span><i style="background:${color}"></i>Rentrant</span><span><i style="background:#fff;border:1.5px solid ${color}"></i>Sortant</span></div>
+    <table class="corner-t"><tbody>${CORNER_TYPES.map(([k,l]) => row(l, cs.type[k])).join("")}
+    <tr class="sep"><td colspan="3"></td></tr>${row(tm === "us" ? "Pau 1er au ballon" : "Adv. 1er au ballon", cs.first[tm])}
+    ${CORNER_RES.map(([k,l]) => row(l, cs.res[k])).join("")}
+    <tr class="sep"><td colspan="3"></td></tr>${CORNER_ZONES.filter(z => cs.z[z]).map(z => row(z, cs.z[z])).join("")}</tbody></table></div>`; }
+function cornersSectionHTML(m){ const todo = cornerCodedTodo(m);
+  return `<section class="panel c12"><div class="ph"><h2>CPA · Corners</h2><div class="toolbar">${todo.length ? `<button class="btn sm primary" data-act="corner-add" data-ev="${todo[0].id}">Placer les corners codés (${todo.length})</button>` : ""}<button class="btn sm" data-act="corner-add" data-tm="us">+ Corner Pau</button><button class="btn sm" data-act="corner-add" data-tm="them">+ Corner adverse</button></div></div>
+    <div class="corner-wrap">${cornerPanelHTML(m, "us")}${cornerPanelHTML(m, "them")}</div>
+    <p class="hint">Clique un point pour modifier ou supprimer le corner. Point plein = rentrant, point creux = sortant ; les corners joués à deux comptent dans le tableau.</p></section>`; }
+function openCornerModal(init){
+  const m = current(); const c = {id: uid(), tm:"us", side:"g", type:"in", x:null, y:null, first:"", res:[], half: state.half || 1, ...init};
+  if (init.ev){ const e = m.events.find(x => x.id === init.ev); if (e){ c.tm = e.tm || "us"; c.half = eventHalf(m, e); c.t = e.t; } }
+  const isNew = !(m.corners || []).some(x => x.id === c.id);
+  const chips = (key, opts, multi) => opts.map(([k,l]) => `<button type="button" class="chip" data-ck="${key}" data-v="${k}" aria-pressed="${multi ? c[key].includes(k) : c[key] === k}">${l}</button>`).join("");
+  const bg = modal(`<h3>${isNew ? "Nouveau corner" : "Modifier le corner"}</h3>
+    <div class="corner-form"><div>
+      <div class="row"><span class="l">Équipe</span>${chips("tm", [["us","Pau"],["them", m.opponent || "Adversaire"]])}</div>
+      <div class="row"><span class="l">Côté</span>${chips("side", [["g","Gauche"],["d","Droit"]])}</div>
+      <div class="row"><span class="l">Type</span>${chips("type", CORNER_TYPES)}</div>
+      <div class="row"><span class="l">Mi-temps</span>${chips("half", [[1,"MT1"],[2,"MT2"]])}</div>
+      <div class="row"><span class="l">1er au ballon</span>${chips("first", CORNER_FIRST)}</div>
+      <div class="row"><span class="l">Issue</span>${chips("res", CORNER_RES, true)}</div></div>
+      <div><div class="hint" id="cm-hint"></div><div id="cm-map"></div></div></div>
+    <div class="actions">${!isNew ? `<button class="btn danger" data-x="del">Supprimer</button>` : ""}<span style="flex:1"></span><button class="btn" data-x="no">Annuler</button><button class="btn primary" data-x="ok">Enregistrer</button></div>`, "wide");
+  const draw = () => { const col = c.tm === "us" ? "var(--us,var(--pau))" : themCol(m);
+    bg.querySelector("#cm-map").innerHTML = cornerMapSVG(c.x != null ? [c] : [], col).replace('class="pitch-svg ', 'class="pitch-svg editing ');
+    bg.querySelector("#cm-hint").textContent = c.type === "deux" ? "Joué à deux : point d'impact facultatif (centre qui suit)." : c.x == null ? "Clique sur le terrain le point d'impact du centre." : "Impact : " + cornerZone(c) + " (clique pour déplacer)."; };
+  draw();
+  bg.addEventListener("click", e => { const b = e.target.closest("[data-ck]");
+    if (b){ const k = b.dataset.ck, v = k === "half" ? +b.dataset.v : b.dataset.v;
+      if (k === "res") c.res = c.res.includes(v) ? c.res.filter(x => x !== v) : [...c.res, v]; else c[k] = c[k] === v && k === "first" ? "" : v;
+      if (k === "res" && v === "but" && c.res.includes("but") && !c.res.includes("tir")) c.res.push("tir");
+      bg.querySelectorAll(`[data-ck="${k}"]`).forEach(x => x.setAttribute("aria-pressed", k === "res" ? c.res.includes(x.dataset.v) : String(c[k]) === x.dataset.v)); if (k === "res" && v === "but") bg.querySelector('[data-ck="res"][data-v="tir"]').setAttribute("aria-pressed", c.res.includes("tir")); draw(); return; }
+    const svg = e.target.closest("#cm-map svg");
+    if (svg){ const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(svg.getScreenCTM().inverse()); c.x = Math.round(Math.min(L, Math.max(L-38, q.x))*10)/10; c.y = Math.round(Math.min(W, Math.max(0, q.y))*10)/10; draw(); return; }
+    const x = e.target.closest("[data-x]"); if (!x) return;
+    if (x.dataset.x === "no"){ bg.remove(); return; }
+    if (x.dataset.x === "del"){ m.corners = (m.corners || []).filter(y => y.id !== c.id); }
+    if (x.dataset.x === "ok"){ m.corners = [...(m.corners || []).filter(y => y.id !== c.id), c]; }
+    persist(m); bg.remove(); render(); toast(x.dataset.x === "del" ? "Corner supprimé." : "Corner enregistré.", 1200);
+    if (x.dataset.x === "ok" && init.ev){ const nxt = cornerCodedTodo(m)[0]; if (nxt) openCornerModal({ev: nxt.id}); } });
 }
 function actionTable(m){
   const agg = {};
@@ -1886,25 +1964,42 @@ function reportHTML(m){
   return `<div class="rpt">${head(`<div class="t">Pau FC</div><div class="m">${m.venue === "ext" ? "Extérieur" : "Domicile"}</div>`,
     `<div class="sc">${st.us.goals} – ${st.them.goals}</div><div class="sx">${m.shots.length ? `xG ${fmt1(st.us.xg)} – ${fmt1(st.them.xg)}` : esc(when)}</div>`,
     `<div class="t" style="color:${lum(opp) < .05 ? '#ffffff' : opp}">${esc(m.opponent || "Adversaire")}</div><div class="m">${esc(when)}</div>`)}
-    <div class="rb">
-      <div class="col"><div class="box"><h4>Comparatif</h4>${rows.map(r => d(r[0], r[1], r[2], r[3])).join("")}${bipHTML(st, true)}</div></div>
-      <div class="col"><div class="box"><h4>Zones de tir · taille = xG</h4>${shotMapSVG(m, {print:true})}
+    ${(() => { const on = pdfOn, ec = k => entryCounts(m, k), hasC = on("corners") && (m.corners || []).length;
+      const col1 = [on("comparatif") ? `<div class="box"><h4>Comparatif</h4>${(hasC ? rows.slice(0, 9) : rows).map(r => d(r[0], r[1], r[2], r[3])).join("")}${on("bip") ? bipHTML(st, true) : ""}</div>` : on("bip") && st.bip > 0 ? `<div class="box"><h4>Ballon in play</h4>${bipHTML(st, true)}</div>` : "",
+        hasC ? `<div class="box"><h4>Corners</h4>${cornerPrintHTML(m, opp, !on("comparatif"))}</div>` : ""].join("");
+      const col2 = [on("tirs") ? `<div class="box"><h4>Zones de tir · taille = xG</h4>${shotMapSVG(m, {print:true})}
         <table style="margin-top:4px;font-size:10.5px"><tr><td></td><td class="n">Tirs</td><td class="n">Cadrés</td><td class="n">Non cadrés</td><td class="n">Contrés</td><td class="n">Surface</td><td class="n">Hors surf.</td></tr>
-        ${[["us","Pau"],["them","Adv."]].map(([tm,l]) => { const f = finitionStats(m, tm); return `<tr><td><b>${l}</b></td><td class="n">${f.total}</td><td class="n">${f.onTarget}</td><td class="n">${f.res.horscadre}</td><td class="n">${f.res.contre}</td><td class="n">${f.surf}</td><td class="n">${f.hors}</td></tr>`; }).join("")}</table></div>
-        <div class="ent" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="box"><h4>Entrées 20 m Pau · ${entryCounts(m,"us").total}</h4>${entriesSVG(entryCounts(m,"us"), usPrint(), "us", false, true)}</div><div class="box"><h4>Entrées 20 m adv. · ${entryCounts(m,"them").total}</h4>${entriesSVG(entryCounts(m,"them"), opp, "them", false, true)}</div></div></div>
-      <div class="col"><div class="box"><h4>Récupérations Pau · ${zoneCounts(m,"recup").total}</h4>${zoneGridSVG(zoneCounts(m,"recup"), usPrint(), {print:true})}</div>
-        <div class="box"><h4>Pertes Pau · ${zoneCounts(m,"perte").total}</h4>${zoneGridSVG(zoneCounts(m,"perte"), opp, {print:true})}</div>
-        ${m.shots.length ? `<div class="box"><h4>xG cumulés</h4>${xgChartSVG(m, true)}</div>` : ""}</div>
-    </div>${foot}</div>`;
+        ${[["us","Pau"],["them","Adv."]].map(([tm,l]) => { const f = finitionStats(m, tm); return `<tr><td><b>${l}</b></td><td class="n">${f.total}</td><td class="n">${f.onTarget}</td><td class="n">${f.res.horscadre}</td><td class="n">${f.res.contre}</td><td class="n">${f.surf}</td><td class="n">${f.hors}</td></tr>`; }).join("")}</table></div>` : "",
+        on("entrees") ? `<div class="ent" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="box"><h4>Entrées 20 m Pau · ${ec("us").total}</h4>${entriesSVG(ec("us"), usPrint(), "us", false, true)}</div><div class="box"><h4>Entrées 20 m adv. · ${ec("them").total}</h4>${entriesSVG(ec("them"), opp, "them", false, true)}</div></div>` : ""].join("");
+      const col3 = [on("recup") ? `<div class="box"><h4>Récupérations Pau · ${zoneCounts(m,"recup").total}</h4>${zoneGridSVG(zoneCounts(m,"recup"), usPrint(), {print:true})}</div>` : "",
+        on("perte") ? `<div class="box"><h4>Pertes Pau · ${zoneCounts(m,"perte").total}</h4>${zoneGridSVG(zoneCounts(m,"perte"), opp, {print:true})}</div>` : "",
+        on("xg") && m.shots.length ? `<div class="box"><h4>xG cumulés</h4>${xgChartSVG(m, true)}</div>` : ""].join("");
+      const cols = [[col1, "300px"], [col2, "1fr"], [col3, "300px"]].filter(c => c[0]);
+      if (cols.length && !cols.some(c => c[1] === "1fr")) cols.forEach(c => c[1] = "1fr");
+      return `<div class="rb" style="grid-template-columns:${cols.map(c => c[1]).join(" ") || "1fr"}">${cols.map(c => `<div class="col">${c[0]}</div>`).join("")}</div>`; })()}
+${foot}</div>`;
 }
+// PDF à la carte : parties cochées / décochées (mémorisées dans ce navigateur)
+const PDF_PARTS = [["comparatif","Stats globales (comparatif)"],["bip","Ballon in play"],["tirs","Zones de tir"],["entrees","Entrées 20 m"],["recup","Récupérations"],["perte","Pertes"],["xg","xG cumulés"],["corners","Corners"]];
+function pdfOff(){ if (!state.pdfOff){ try { state.pdfOff = JSON.parse(localStorage.getItem("pdfOff") || "[]"); } catch { state.pdfOff = []; } } return state.pdfOff; }
+const pdfOn = k => !pdfOff().includes(k);
+function cornerPrintHTML(m, opp, big){
+  const side = tm => { const list = (m.corners || []).filter(c => c.tm === tm), cs = cornerStats(list), color = tm === "us" ? usPrint() : opp;
+    const svg = cornerMapSVG(list, color, true).replace(/viewBox="[^"]*"/, `viewBox="${L-30} ${big ? 4 : 12} 31 ${big ? W-8 : W-24}"`);
+    return `<div><div style="font-size:10px;font-weight:700;margin-bottom:2px">${tm === "us" ? "Pau" : "Adv."} · ${cs.n}</div>${svg}
+      <div style="font-size:9.5px;line-height:1.35">Rentrant ${cs.type.in} · Sortant ${cs.type.out} · À deux ${cs.type.deux}<br>1er au ballon ${pct(cs.first[tm], cs.n)} · Tir ${cs.res.tir} · But ${cs.res.but}<br>Sortie GB ${cs.res.gb} · Dégagé ${cs.res.deg}</div></div>`; };
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${side("us")}${side("them")}</div>`; }
 function openPdfPreview(){
   const m = current();
   const bg = modal(`<h3>PDF une page</h3><p class="hint">Aperçu du rapport ${state.view === "indiv" ? "individuel" : "collectif"} au format A4 paysage.</p>
+    ${state.view !== "indiv" ? `<div class="pdf-parts"><b>Afficher :</b>${PDF_PARTS.map(([k,l]) => `<label><input type="checkbox" data-part="${k}" ${pdfOn(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>` : ""}
     <div class="preview-box"><div class="rpt-scale" id="rpt-holder">${reportHTML(m)}</div></div>
     <div class="actions"><button class="btn" data-x="no">Fermer</button><button class="btn primary" data-x="dl">Télécharger le PDF</button></div>`, "wide");
   const holder = bg.querySelector("#rpt-holder"), box = bg.querySelector(".preview-box");
   const fit = () => { const s = Math.min(1, (box.clientWidth - 20)/1123); holder.style.transform = `scale(${s})`; holder.style.height = (794*s) + "px"; holder.style.width = (1123*s) + "px"; };
   fit(); window.addEventListener("resize", fit, {once:true});
+  bg.addEventListener("change", e => { const k = e.target.dataset.part; if (!k) return; state.pdfOff = e.target.checked ? pdfOff().filter(x => x !== k) : [...pdfOff(), k];
+    try { localStorage.setItem("pdfOff", JSON.stringify(state.pdfOff)); } catch {} holder.innerHTML = reportHTML(m); });
   bg.querySelector('[data-x="no"]').onclick = () => bg.remove();
   bg.querySelector('[data-x="dl"]').onclick = async (e) => {
     const btn = e.currentTarget; btn.disabled = true; btn.textContent = "Génération…";
@@ -2616,6 +2711,7 @@ function exportSportscodeXML(m){
 }
 document.addEventListener("click", async (evt) => {
   const b = evt.target.closest(".cw-b[data-cw]"); if (b){ if (evt.detail === 0) cwPress(Number(b.dataset.cw)); return; }
+  const cd = evt.target.closest(".cdot"); if (cd && !evt.target.closest(".modal")){ const c = (current().corners || []).find(x => x.id === cd.dataset.cid); if (c) openCornerModal({...c, res:[...(c.res || [])]}); return; }
   const lsvg = evt.target.closest('svg[data-role="cwloc"]');
   if (lsvg){
     const m = current(); const ev = m.events.find(e => e.id === lsvg.dataset.ev); if (!ev) return;
@@ -2666,6 +2762,7 @@ document.addEventListener("click", async (evt) => {
   else if (a === "tl-row"){ const ids = m.events.filter(e => e.live && inWin(e) && tlKey(e) === t.dataset.k).sort((x,y) => x.t - y.t).map(e => e.id); if (!ids.length) return;
     state.tlSel = ids; state.cwSel = ids[0]; tlMoveTo(m, pressTime(m.events.find(e => e.id === ids[0])), true); persist(m); render(); toast(`${ids.length} séquence${ids.length > 1 ? "s" : ""} sélectionnée${ids.length > 1 ? "s" : ""} · TAB = suivante, Maj+TAB = précédente`, 2500); }
   else if (a === "cw-float"){ state.cwFloat = t.dataset.v; render(); }
+  else if (a === "corner-add") openCornerModal(t.dataset.ev ? {ev: t.dataset.ev} : {tm: t.dataset.tm});
   else if (a === "cw-vp"){ state.vpOpen = !state.vpOpen; vpSync(); render(); }
   else if (a === "cw-video"){ state.cwVideo = !state.cwVideo; render(); }
   else if (a === "tl-unsel"){ state.tlSel = []; state.cwSel = null; render(); }
