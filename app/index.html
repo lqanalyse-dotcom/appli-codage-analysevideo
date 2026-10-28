@@ -407,6 +407,9 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
    ========================================================= */
 const L = 105, W = 68, GOAL_HALF = 3.66;
 const PAU = { name: "Pau FC", short: "PAU" };
+// Équipe analysée : nom réglable par match (sinon valeur par défaut des Paramètres, sinon Pau FC)
+function TN(){ const m = typeof current === "function" && state.matches ? current() : null; return (m && m.teamName) || (state.settings && state.settings.theme && state.settings.theme.teamName) || "Pau FC"; }
+function TS(){ const m = typeof current === "function" && state.matches ? current() : null; return (m && m.teamShort) || (m && m.teamName ? "" : (state.settings && state.settings.theme && state.settings.theme.teamShort)) || (TN() === "Pau FC" ? "Pau" : TN()); }
 const OPP_COLORS = ["#d7263d","#e4572e","#1b998b","#2e86ab","#7b2cbf","#111111","#ffffff","#2a9d3f","#8d99ae","#f28482"];
 
 // Nom codé → [clé canonique, équipe]. Équipe "us" = Pau FC.
@@ -847,7 +850,7 @@ function matchSpan(m){ const c = m.live, h = state.half, k2 = c ? k2At(c) : null
   return Math.max(...ev.map(e => e.e ?? e.t ?? 0)) - Math.min(...ev.map(e => e.t ?? 0)); }
 const hms = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s/3600); return (h ? h + ":" + String(Math.floor(s/60)%60).padStart(2,"0") : Math.floor(s/60)) + ":" + String(s%60).padStart(2,"0"); };
 function bipHTML(st, print){ if (!(st.bip > 0)) return "";
-  return `<div class="bip${print ? " p" : ""}"><b>Ballon in play</b><strong>${hms(st.bip)}</strong>${st.bipSpan ? `<span>${Math.round(st.bipPct)} % du temps de jeu (${hms(st.bipSpan)})</span>` : ""}<span><i class="sw us"></i>Pau ${hms(st.us.possSec)}</span><span><i class="sw them"></i>Adv. ${hms(st.them.possSec)}</span></div>`; }
+  return `<div class="bip${print ? " p" : ""}"><b>Ballon in play</b><strong>${hms(st.bip)}</strong>${st.bipSpan ? `<span>${Math.round(st.bipPct)} % du temps de jeu (${hms(st.bipSpan)})</span>` : ""}<span><i class="sw us"></i>${esc(TS())} ${hms(st.us.possSec)}</span><span><i class="sw them"></i>Adv. ${hms(st.them.possSec)}</span></div>`; }
 // Grilles : récupérations Pau et pertes Pau, dans le repère Pau (attaque vers la droite)
 function zoneCounts(m, kind, filter){
   const counts = Object.fromEntries(ZONES.map(z => [z,0])); const bands = {}, pts = [], todo = []; let tagged = 0, total = 0;
@@ -1152,7 +1155,7 @@ function zoneGridSVG(zc, color, {editing=false, kind="", print=false}={}){
   const linesPrint = print ? pitchLines().replaceAll("var(--pitch-line)","#b9c6bb").replaceAll("var(--pitch-stripe)","#eef4ee").replaceAll("var(--pitch)","#f6faf6") : pitchLines();
   return `${svgOpen(`-2 -6 ${L+4} ${W+8}`, editing ? "editing" : "", kind ? `data-role="zonemap" data-kind="${kind}"` : "")}${arrowDefs()}${linesPrint}${cells}
     <line x1="${L*0.62}" y1="-3" x2="${L*0.82}" y2="-3" stroke="${print?'#56618a':'var(--ink-2)'}" stroke-width=".5" marker-end="url(#arr)"/>
-    <text x="${L*0.6}" y="-1.8" text-anchor="end" font-size="3.6" fill="${print?'#56618a':'var(--ink-2)'}">SENS DU JEU PAU</text></svg>`;
+    <text x="${L*0.6}" y="-1.8" text-anchor="end" font-size="3.6" fill="${print?'#56618a':'var(--ink-2)'}">SENS DU JEU ${esc(TS().toUpperCase())}</text></svg>`;
 }
 function entriesSVG(ec, color, tm, editing, print=false){
   // Dernier tiers vu par l'équipe qui attaque (vers la droite), trois couloirs d'entrée dans les 20 m
@@ -1195,7 +1198,7 @@ function shotMapSVG(m, {editing=false, sel=null, hover=null, print=false, onlyUs
   const lab = print ? "#56618a" : "var(--ink-2)";
   const vb = onlyUs ? `${L/2-1} -6 ${L/2+3} ${W+8}` : `-2 -6 ${L+4} ${W+8}`;
   const labels = onlyUs ? `<text x="${L-1}" y="-1.8" text-anchor="end" font-size="3.4" fill="${lab}">TIRS → BUT ADVERSE</text>` :
-    `<text x="1" y="-1.8" font-size="3.4" fill="${lab}">← TIRS ${esc((m.opponent||"ADVERSAIRE").toUpperCase())}</text><text x="${L-1}" y="-1.8" text-anchor="end" font-size="3.4" fill="${lab}">TIRS PAU FC →</text>`;
+    `<text x="1" y="-1.8" font-size="3.4" fill="${lab}">← TIRS ${esc((m.opponent||"ADVERSAIRE").toUpperCase())}</text><text x="${L-1}" y="-1.8" text-anchor="end" font-size="3.4" fill="${lab}">TIRS ${esc(TN().toUpperCase())} →</text>`;
   return `${svgOpen(vb, editing ? "editing" : "", 'data-role="shotmap"')}${pl}${labels}${marks}${hv}</svg>`;
 }
 // Finition : tirs placés (position → surface / hors surface) + tirs codés pas encore placés (labels FINITION / ZONE FINITION)
@@ -1309,9 +1312,9 @@ function duelHTML(label, a, b, f){
 }
 function headerHTML(m, st){
   const oc = themCol(m);
-  const clubLogo = state.settings.clubLogo ? `<img src="${blobUrl(state.settings.clubLogo)}" alt="">` : "PAU";
+  const clubLogo = state.settings.clubLogo ? `<img src="${blobUrl(state.settings.clubLogo)}" alt="">` : esc(TS().toUpperCase().slice(0,4));
   const oppLogo = m.oppLogo ? `<img src="${blobUrl(m.oppLogo)}" alt="">` : esc((m.opponent||"ADV").slice(0,3).toUpperCase());
-  const home = `<div class="team"><div class="badge" style="background:#f6c400;color:#0a1f4f">${clubLogo}</div><div><div class="name">Pau FC</div><div class="meta">${m.venue === "ext" ? "Extérieur" : "Domicile"}</div></div></div>`;
+  const home = `<div class="team"><div class="badge" style="background:#f6c400;color:#0a1f4f">${clubLogo}</div><div><div class="name">${esc(TN())}</div><div class="meta">${m.venue === "ext" ? "Extérieur" : "Domicile"}</div></div></div>`;
   const away = `<div class="team away"><div><div class="name">${esc(m.opponent || "Adversaire")}</div><div class="meta">Adversaire</div></div><div class="badge" style="background:${oc};color:${inkOn(oc)}">${oppLogo}</div></div>`;
   const when = [m.competition, m.date ? new Date(m.date).toLocaleDateString("fr-FR", {day:"numeric", month:"long", year:"numeric"}) : ""].filter(Boolean).join(" · ");
   return `<section class="match-head"><div class="wrap">
@@ -1343,30 +1346,30 @@ function renderCollectif(m){
   const unplaced = {us: st.us.unplaced, them: st.them.unplaced};
   return `${sampleNote(m)}
   <div class="grid">
-    <section class="panel c7"><div class="ph"><h2>Pau FC face à ${esc(m.opponent || "l'adversaire")}</h2><div class="legend"><span><i class="sw us"></i>Pau FC</span><span><i class="sw them"></i>${esc(m.opponent || "Adversaire")}</span></div></div>
+    <section class="panel c7"><div class="ph"><h2>${esc(TN())} face à ${esc(m.opponent || "l'adversaire")}</h2><div class="legend"><span><i class="sw us"></i>${esc(TN())}</span><span><i class="sw them"></i>${esc(m.opponent || "Adversaire")}</span></div></div>
       <div class="two"><div class="duels">${rows.slice(0,half).map(r => duelHTML(r[0], r[1], r[2], r[3])).join("")}</div><div class="duels">${rows.slice(half).map(r => duelHTML(r[0], r[1], r[2], r[3])).join("")}</div></div>
       ${bipHTML(st)}
       ${!st.possCoded ? `<p class="hint">Possession non codée dans ce fichier (actions ATTAQUE / DEFENSE absentes).</p>` : ""}
     </section>
     <section class="panel c5"><div class="ph"><h2>Entrées dans les 20 m</h2><span class="sub">par couloir d'entrée</span></div>
       <div class="two">
-        <div><div class="eyebrow">Pau FC · ${eu.total}</div>${entriesSVG(eu, "var(--us,var(--pau))", "us", state.entryEdit)}</div>
+        <div><div class="eyebrow">${esc(TN())} · ${eu.total}</div>${entriesSVG(eu, "var(--us,var(--pau))", "us", state.entryEdit)}</div>
         <div><div class="eyebrow">${esc(m.opponent || "Adversaire")} · ${et.total}</div>${entriesSVG(et, opp, "them", state.entryEdit)}</div>
       </div>
       ${eu.total + et.total && eu.tagged + et.tagged < eu.total + et.total ? `<p class="hint">${eu.total + et.total - eu.tagged - et.tagged} entrées sans couloir (labels GAUCHE / AXE / DROITE).</p>` : ""}
       <div class="toolbar" style="margin-top:8px">${state.entryEdit ? `<span class="hint">Clique un couloir pour ajouter une entrée. Clic droit ou appui long pour en retirer une.</span><button class="btn sm" data-act="entry-edit">Terminer</button>` : `<button class="btn sm" data-act="entry-edit">Saisir des entrées</button>`}</div>
     </section>
 
-    <section class="panel c6"><div class="ph"><h2>Récupérations Pau</h2><span class="sub">${zr.total} au total · où Pau gagne le ballon</span></div>
+    <section class="panel c6"><div class="ph"><h2>Récupérations ${esc(TS())}</h2><span class="sub">${zr.total} au total · où ${esc(TS())} gagne le ballon</span></div>
       ${zoneGridSVG(zr, "var(--us,var(--pau))", {editing: zEdit === "recup", kind:"recup"})}${zoneHint(zr)}${zoneToolbar("recup", zr)}</section>
-    <section class="panel c6"><div class="ph"><h2>Pertes Pau</h2><span class="sub">${zp.total} au total · où ${esc(m.opponent || "l'adversaire")} récupère</span></div>
+    <section class="panel c6"><div class="ph"><h2>Pertes ${esc(TS())}</h2><span class="sub">${zp.total} au total · où ${esc(m.opponent || "l'adversaire")} récupère</span></div>
       ${zoneGridSVG(zp, opp, {editing: zEdit === "perte", kind:"perte"})}${zoneHint(zp)}${zoneToolbar("perte", zp)}</section>
 
     <section class="panel c8"><div class="ph"><h2>Zones de tir et xG</h2>
         <div class="toolbar">${state.shotEdit ? `<button class="btn sm primary" data-act="shot-edit">Terminer la saisie</button>` : `<button class="btn sm" data-act="shot-edit">Placer des tirs</button>`}</div></div>
       ${shotMapSVG(m, {editing: state.shotEdit, sel: state.shotSel, hover: state.hover})}
       <div class="legend" style="margin-top:6px"><span>● plein : cadré</span><span>◎ cerclé blanc : but</span><span>○ vide : non cadré</span><span>pointillé : contré</span><span>taille = xG</span></div>
-      ${(unplaced.us + unplaced.them) ? `<p class="hint">${unplaced.us + unplaced.them} tirs codés dans le fichier n'ont pas encore de position (${unplaced.us} Pau, ${unplaced.them} adverses). Clique « Placer des tirs » pour les positionner.</p>` : ""}
+      ${(unplaced.us + unplaced.them) ? `<p class="hint">${unplaced.us + unplaced.them} tirs codés dans le fichier n'ont pas encore de position (${unplaced.us} ${esc(TS())}, ${unplaced.them} adverses). Clique « Placer des tirs » pour les positionner.</p>` : ""}
       ${state.shotEdit ? shotEditorHTML(m) : ""}
       <details class="model"><summary>Comment le xG est calculé</summary>
         <p>Chaque tir reçoit une probabilité de but entre 0,01 et 0,95, calculée par une régression logistique :</p>
@@ -1377,15 +1380,15 @@ function renderCollectif(m){
         <p>xG = 1 / (1 + e<sup>−z</sup>). Exemple : frappe du pied à 11 m dans l'axe avec seulement le gardien devant ≈ 0,26 ; même frappe avec 3 adversaires ≈ 0,14.</p></details>
     </section>
     <section class="panel c12"><div class="ph"><h2>Finition</h2><span class="sub">cadrés, non cadrés, contrés · surface / hors surface d'après la position du tir</span></div>
-      <div class="two">${[["us","Pau FC","var(--us,var(--pau))"],["them", m.opponent || "Adversaire", opp]].map(([tm, nm, col]) => { const f = finitionStats(m, tm);
+      <div class="two">${[["us",(TN()),"var(--us,var(--pau))"],["them", m.opponent || "Adversaire", opp]].map(([tm, nm, col]) => { const f = finitionStats(m, tm);
         return `<div><div class="eyebrow">${esc(nm)} · ${f.total} tir${f.total>1?"s":""}</div><div class="half-map" style="max-width:340px;margin:6px auto 0">${finitionSVG(m, f, col)}</div>${finitionBars(f, col)}</div>`; }).join("")}</div></section>
     <section class="panel c4"><div class="ph"><h2>xG cumulés</h2><span class="sub">● = but</span></div>
       ${m.shots.length ? xgChartSVG(m) : `<div class="empty">Aucun tir positionné pour l'instant.</div>`}
       <div class="kpis" style="margin-top:12px">
-        <div class="kpi"><div class="k">xG Pau</div><div class="v">${fmt1(st.us.xg)}</div><div class="s">${st.us.goals} but${st.us.goals>1?"s":""} · ${st.us.placed} tirs placés</div></div>
+        <div class="kpi"><div class="k">xG ${esc(TS())}</div><div class="v">${fmt1(st.us.xg)}</div><div class="s">${st.us.goals} but${st.us.goals>1?"s":""} · ${st.us.placed} tirs placés</div></div>
         <div class="kpi"><div class="k">xG concédés</div><div class="v">${fmt1(st.them.xg)}</div><div class="s">${st.them.goals} encaissé${st.them.goals>1?"s":""} · ${st.them.placed} tirs placés</div></div>
-        <div class="kpi"><div class="k">xG / tir Pau</div><div class="v">${st.us.placed ? fmt1(st.us.xg/st.us.placed) : "–"}</div><div class="s">qualité moyenne des occasions</div></div>
-        <div class="kpi"><div class="k">Buts − xG</div><div class="v">${m.shots.length ? (st.us.goals - st.us.xg >= 0 ? "+" : "") + fmt1(st.us.goals - st.us.xg) : "–"}</div><div class="s">efficacité Pau</div></div>
+        <div class="kpi"><div class="k">xG / tir ${esc(TS())}</div><div class="v">${st.us.placed ? fmt1(st.us.xg/st.us.placed) : "–"}</div><div class="s">qualité moyenne des occasions</div></div>
+        <div class="kpi"><div class="k">Buts − xG</div><div class="v">${m.shots.length ? (st.us.goals - st.us.xg >= 0 ? "+" : "") + fmt1(st.us.goals - st.us.xg) : "–"}</div><div class="s">efficacité ${esc(TS())}</div></div>
       </div>
     </section>
 
@@ -1399,8 +1402,8 @@ function renderCollectif(m){
 }
 // CPA · corners : type (rentrant / sortant / joué à deux), point d'impact, premier au ballon, issues. Repère : attaque vers la droite.
 const CORNER_TYPES = [["in","Rentrant"],["out","Sortant"],["deux","Joué à deux"]];
-const CORNER_FIRST = [["us","Pau 1er au ballon"],["them","Adv. 1er au ballon"],["none","Personne"]];
-const CORNER_RES = [["tir","Tir"],["but","But"],["gb","Sortie du gardien"],["deg","Dégagé"],["b2us","2e ballon Pau"],["b2them","2e ballon adv."],["faute","Faute"],["sortie","Sortie de jeu"]];
+const CORNER_FIRST_ = () => [["us",(TS() + " 1er au ballon")],["them","Adv. 1er au ballon"],["none","Personne"]];
+const CORNER_RES_ = () => [["tir","Tir"],["but","But"],["gb","Sortie du gardien"],["deg","Dégagé"],["b2us",("2e ballon " + TS())],["b2them","2e ballon adv."],["faute","Faute"],["sortie","Sortie de jeu"]];
 function cornerZone(c){ if (c.type === "deux" || c.x == null) return null; const dx = L - c.x, near = c.side === "g" ? c.y < W/2 : c.y > W/2;
   if (dx > 16.5 || Math.abs(c.y - W/2) > 20.16) return "Hors surface";
   if (dx <= 5.5 && Math.abs(c.y - W/2) <= 9.16) return Math.abs(c.y - W/2) <= 3.66 ? "6 m axe" : near ? "6 m 1er poteau" : "6 m 2e poteau";
@@ -1416,19 +1419,19 @@ function cornerMapSVG(list, color, print=false){
   return `${svgOpen(`${L-38} -2 40 ${W+4}`, "", 'data-role="cornermap"')}${pl}${marks}</svg>`; }
 function cornerStats(list){ const n = list.length, cnt = k => list.filter(c => (c.res || []).includes(k)).length, z = {};
   list.forEach(c => { const k = cornerZone(c); if (k) z[k] = (z[k] || 0) + 1; });
-  return {n, type: Object.fromEntries(CORNER_TYPES.map(([k]) => [k, list.filter(c => c.type === k).length])), first: Object.fromEntries(CORNER_FIRST.map(([k]) => [k, list.filter(c => c.first === k).length])), res: Object.fromEntries(CORNER_RES.map(([k]) => [k, cnt(k)])), z}; }
+  return {n, type: Object.fromEntries(CORNER_TYPES.map(([k]) => [k, list.filter(c => c.type === k).length])), first: Object.fromEntries(CORNER_FIRST_().map(([k]) => [k, list.filter(c => c.first === k).length])), res: Object.fromEntries(CORNER_RES_().map(([k]) => [k, cnt(k)])), z}; }
 function cornerPanelHTML(m, tm, print=false){
   const list = (m.corners || []).filter(c => c.tm === tm), color = tm === "us" ? (print ? usPrint() : "var(--us,var(--pau))") : themCol(m), cs = cornerStats(list);
   const row = (l, v) => `<tr><td>${l}</td><td class="n">${v}</td><td class="n">${pct(v, cs.n)}</td></tr>`;
-  return `<div class="corner-col"><div class="corner-h"><b>${tm === "us" ? "Corners Pau" : "Corners " + esc(m.opponent || "adverses")}</b><span>${cs.n}</span></div>
+  return `<div class="corner-col"><div class="corner-h"><b>${tm === "us" ? ("Corners " + TS()) : "Corners " + esc(m.opponent || "adverses")}</b><span>${cs.n}</span></div>
     ${cornerMapSVG(list, color, print)}
     <div class="corner-leg"><span><i style="background:${color}"></i>Rentrant</span><span><i style="background:#fff;border:1.5px solid ${color}"></i>Sortant</span></div>
     <table class="corner-t"><tbody>${CORNER_TYPES.map(([k,l]) => row(l, cs.type[k])).join("")}
-    <tr class="sep"><td colspan="3"></td></tr>${row(tm === "us" ? "Pau 1er au ballon" : "Adv. 1er au ballon", cs.first[tm])}
-    ${CORNER_RES.map(([k,l]) => row(l, cs.res[k])).join("")}
+    <tr class="sep"><td colspan="3"></td></tr>${row(tm === "us" ? (TS() + " 1er au ballon") : "Adv. 1er au ballon", cs.first[tm])}
+    ${CORNER_RES_().map(([k,l]) => row(l, cs.res[k])).join("")}
     <tr class="sep"><td colspan="3"></td></tr>${CORNER_ZONES.filter(z => cs.z[z]).map(z => row(z, cs.z[z])).join("")}</tbody></table></div>`; }
 function cornersSectionHTML(m){ const todo = cornerCodedTodo(m);
-  return `<section class="panel c12"><div class="ph"><h2>CPA · Corners</h2><div class="toolbar">${todo.length ? `<button class="btn sm primary" data-act="corner-add" data-ev="${todo[0].id}">Placer les corners codés (${todo.length})</button>` : ""}<button class="btn sm" data-act="corner-add" data-tm="us">+ Corner Pau</button><button class="btn sm" data-act="corner-add" data-tm="them">+ Corner adverse</button></div></div>
+  return `<section class="panel c12"><div class="ph"><h2>CPA · Corners</h2><div class="toolbar">${todo.length ? `<button class="btn sm primary" data-act="corner-add" data-ev="${todo[0].id}">Placer les corners codés (${todo.length})</button>` : ""}<button class="btn sm" data-act="corner-add" data-tm="us">+ Corner ${esc(TS())}</button><button class="btn sm" data-act="corner-add" data-tm="them">+ Corner adverse</button></div></div>
     <div class="corner-wrap">${cornerPanelHTML(m, "us")}${cornerPanelHTML(m, "them")}</div>
     <p class="hint">Clique un point pour modifier ou supprimer le corner. Point plein = rentrant, point creux = sortant ; les corners joués à deux comptent dans le tableau.</p></section>`; }
 function openCornerModal(init){
@@ -1438,12 +1441,12 @@ function openCornerModal(init){
   const chips = (key, opts, multi) => opts.map(([k,l]) => `<button type="button" class="chip" data-ck="${key}" data-v="${k}" aria-pressed="${multi ? c[key].includes(k) : c[key] === k}">${l}</button>`).join("");
   const bg = modal(`<h3>${isNew ? "Nouveau corner" : "Modifier le corner"}</h3>
     <div class="corner-form"><div>
-      <div class="row"><span class="l">Équipe</span>${chips("tm", [["us","Pau"],["them", m.opponent || "Adversaire"]])}</div>
+      <div class="row"><span class="l">Équipe</span>${chips("tm", [["us",(TS())],["them", m.opponent || "Adversaire"]])}</div>
       <div class="row"><span class="l">Côté</span>${chips("side", [["g","Gauche"],["d","Droit"]])}</div>
       <div class="row"><span class="l">Type</span>${chips("type", CORNER_TYPES)}</div>
       <div class="row"><span class="l">Mi-temps</span>${chips("half", [[1,"MT1"],[2,"MT2"]])}</div>
-      <div class="row"><span class="l">1er au ballon</span>${chips("first", CORNER_FIRST)}</div>
-      <div class="row"><span class="l">Issue</span>${chips("res", CORNER_RES, true)}</div></div>
+      <div class="row"><span class="l">1er au ballon</span>${chips("first", CORNER_FIRST_())}</div>
+      <div class="row"><span class="l">Issue</span>${chips("res", CORNER_RES_(), true)}</div></div>
       <div><div class="hint" id="cm-hint"></div><div id="cm-map"></div></div></div>
     <div class="actions">${!isNew ? `<button class="btn danger" data-x="del">Supprimer</button>` : ""}<span style="flex:1"></span><button class="btn" data-x="no">Annuler</button><button class="btn primary" data-x="ok">Enregistrer</button></div>`, "wide");
   const draw = () => { const col = c.tm === "us" ? "var(--us,var(--pau))" : themCol(m);
@@ -1469,7 +1472,7 @@ function actionTable(m){
   teamEvents(m).forEach(e => { if (e.k === "POSSESSION") return; const key = KEY_LABEL[e.k] || e.k; agg[key] = agg[key] || {us:0, them:0}; agg[key][e.tm]++; });
   const rows = Object.entries(agg).sort((a,b) => (b[1].us+b[1].them) - (a[1].us+a[1].them));
   if (!rows.length) return `<div class="empty">Aucune action codée.</div>`;
-  return `<div class="tscroll" style="max-height:320px;overflow:auto"><table class="t"><thead><tr><th>Action</th><th style="text-align:right">Pau</th><th style="text-align:right">Adv.</th></tr></thead><tbody>
+  return `<div class="tscroll" style="max-height:320px;overflow:auto"><table class="t"><thead><tr><th>Action</th><th style="text-align:right">${esc(TS())}</th><th style="text-align:right">Adv.</th></tr></thead><tbody>
     ${rows.map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${v.us}</td><td class="n">${v.them}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function shotEditorHTML(m){
@@ -1482,10 +1485,10 @@ function shotEditorHTML(m){
   const segBtns = (field, opts) => `<div class="seg">${Object.entries(opts).map(([k,l]) => `<button data-act="draft" data-f="${field}" data-v="${k}" aria-pressed="${d[field]===k}">${l}</button>`).join("")}</div>`;
   const live = state.hover ? xgOf({...state.draft, x:state.hover.x, y:state.hover.y}) : sel ? xgOf(sel) : null;
   return `<div class="editor">
-    <div class="row"><strong>${sel ? `Tir sélectionné (${sel.tm === "us" ? "Pau FC" : esc(m.opponent || "adversaire")})` : "Nouveau tir"}</strong>
-      <span class="hint">${sel ? "Modifie ses réglages ou supprime-le." : "Moitié droite : tir de Pau. Moitié gauche : tir adverse. Règle les options puis clique sur le point de frappe."}</span></div>
+    <div class="row"><strong>${sel ? `Tir sélectionné (${sel.tm === "us" ? (TN()) : esc(m.opponent || "adversaire")})` : "Nouveau tir"}</strong>
+      <span class="hint">${sel ? "Modifie ses réglages ou supprime-le." : ("Moitié droite : tir de " + TS() + ". Moitié gauche : tir adverse. Règle les options puis clique sur le point de frappe.")}</span></div>
     ${!sel && unplaced.length ? `<div class="row"><label class="l" for="draft-ev">Tir codé à placer</label><select class="f" id="draft-ev" data-act="draft-ev"><option value="">Tir supplémentaire (non codé)</option>
-      ${unplaced.map(e => `<option value="${e.id}" ${state.draft.ev===e.id?"selected":""}>${e.tm==="us"?"Pau":"Adv."} · ${esc(e.n)}${Number.isFinite(t0) && e.t ? " · " + Math.round((e.t-t0)/60) + "' (vidéo)" : ""}</option>`).join("")}</select></div>` : ""}
+      ${unplaced.map(e => `<option value="${e.id}" ${state.draft.ev===e.id?"selected":""}>${e.tm==="us"?(TS()):"Adv."} · ${esc(e.n)}${Number.isFinite(t0) && e.t ? " · " + Math.round((e.t-t0)/60) + "' (vidéo)" : ""}</option>`).join("")}</select></div>` : ""}
     <div class="row"><span class="l">Surface de contact</span>${segBtns("body", BODY)}</div>
     <div class="row"><span class="l">Adversaires entre ballon et but</span><div class="stepper"><button data-act="opp" data-d="-1" aria-label="Moins">−</button><span>${d.opp}</span><button data-act="opp" data-d="1" aria-label="Plus">+</button></div><span class="hint">gardien compris</span></div>
     <div class="row"><span class="l">Situation</span>${segBtns("sit", SIT)}</div>
@@ -1573,7 +1576,7 @@ function renderDocs(){
         <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-act="open-match" data-id="${mm.id}">Ouvrir</button> <button class="btn sm" data-act="export-json" data-id="${mm.id}">Exporter</button> <button class="btn sm danger" data-act="del-match" data-id="${mm.id}">Supprimer</button></td></tr>`; }).join("")}</tbody></table></div>`
         : `<div class="empty">Aucun match enregistré. Importe un fichier ou crée un match vide pour saisir à la main.</div>`}
       <div class="toolbar" style="margin-top:12px"><button class="btn primary" data-act="import">Importer un match</button><button class="btn" data-act="new-match">Créer un match vide</button>
-        ${S.assets ? `<button class="btn" data-act="club-logo">${state.settings.clubLogo ? "Changer le logo Pau FC" : "Ajouter le logo Pau FC"}</button>` : ""}</div>
+        ${S.assets ? `<button class="btn" data-act="club-logo">${state.settings.clubLogo ? ("Changer le logo " + TN()) : ("Ajouter le logo " + TN())}</button>` : ""}</div>
       <p class="hint">${S.mode === "cloud" ? "Les matchs sont enregistrés dans l'application et retrouvés sur tous tes appareils." : "Les matchs sont enregistrés dans ce navigateur uniquement."}</p>
     </section>
   </div>`;
@@ -1582,7 +1585,7 @@ function renderDocs(){
 // Paramètres d'apparence (réglages de l'application) : thème, couleurs de l'appli et du PDF
 const THEME_DEF = {mode:"auto", bg:"", navy:"", pau:"", pdfMain:"#0a1f4f", pdfAcc:"#f6c400", pdfBg:"#ffffff", dataUs:"", dataThem:""};
 // Couleurs des données : Pau / adversaire (vide = jaune Pau et couleur adversaire du match)
-const DATA_PALETTES = [["Pau (jaune / couleur adv.)","",""],["Jaune / rouge","#f6c400","#d7263d"],["Bleu / orange","#2a78d6","#eb6834"],["Vert / violet","#1baf7a","#7b2cbf"],["Bleu nuit / rouge","#0a1f4f","#d03b3b"],["Turquoise / rose","#1b998b","#e87ba4"],["Noir / gris","#111111","#9aa0aa"]];
+const DATA_PALETTES = [["Défaut (jaune / couleur adv.)","",""],["Jaune / rouge","#f6c400","#d7263d"],["Bleu / orange","#2a78d6","#eb6834"],["Vert / violet","#1baf7a","#7b2cbf"],["Bleu nuit / rouge","#0a1f4f","#d03b3b"],["Turquoise / rose","#1b998b","#e87ba4"],["Noir / gris","#111111","#9aa0aa"]];
 const usPrint = () => (state.settings.theme || {}).dataUs || "#f6c400";
 const themCol = m => (state.settings.theme || {}).dataThem || (m && m.oppColor) || "#d7263d";
 function rptVars(el){ const t = {...THEME_DEF, ...(state.settings.theme || {})}; el.style.setProperty("--rpt-main", t.pdfMain); el.style.setProperty("--rpt-acc", t.pdfAcc); el.style.setProperty("--rpt-bg", t.pdfBg); }
@@ -1599,12 +1602,14 @@ function openSettings(){
   const bg = document.createElement("div"); bg.className = "modal-bg";
   const col = (k, lab, def) => `<label class="cwe-f"><span>${lab}</span><input type="color" data-k="${k}" value="${t[k] || def}"></label>`;
   bg.innerHTML = `<div class="modal" role="dialog" aria-label="Paramètres"><h3>Paramètres</h3>
-    <div class="cwe-sec" style="border:0;padding:0"><b>Logiciel</b>
+    <div class="cwe-sec" style="border:0;padding:0"><b>Équipe analysée (par défaut)</b><span class="hint">Remplace « Pau FC » partout. Modifiable aussi match par match dans « Infos du match ».</span>
+      <div class="cwe-grid"><label class="cwe-f"><span>Nom complet</span><input type="text" class="f" data-k="teamName" value="${esc(t.teamName || "")}" placeholder="Pau FC"></label><label class="cwe-f"><span>Nom court</span><input type="text" class="f" data-k="teamShort" value="${esc(t.teamShort || "")}" placeholder="Pau"></label></div></div>
+    <div class="cwe-sec"><b>Logiciel</b>
       <label class="cwe-f"><span>Thème</span><select class="f" data-k="mode"><option value="auto" ${t.mode === "auto" ? "selected" : ""}>Automatique (comme l'ordinateur)</option><option value="light" ${t.mode === "light" ? "selected" : ""}>Clair</option><option value="dark" ${t.mode === "dark" ? "selected" : ""}>Sombre</option></select></label>
       <div class="cwe-grid">${col("bg","Couleur de fond", t.mode === "dark" ? "#081230" : "#eef1f7")}${col("navy","Couleur principale (bandeau)", "#0a1f4f")}${col("pau","Couleur d'accent", "#f6c400")}</div></div>
-    <div class="cwe-sec"><b>Couleurs des données</b><span class="hint">Graphiques, barres, terrains, PDF : Pau / adversaire.</span>
+    <div class="cwe-sec"><b>Couleurs des données</b><span class="hint">Graphiques, barres, terrains, PDF : ${esc(TS())} / adversaire.</span>
       <div class="pal-list">${DATA_PALETTES.map(([nm, a, b], i) => `<button type="button" class="pal ${t.dataUs === a && t.dataThem === b ? "on" : ""}" data-pal="${i}"><i style="background:${a || "#f6c400"}"></i><i style="background:${b || "linear-gradient(135deg,#d7263d,#2e86ab)"}"></i>${esc(nm)}</button>`).join("")}</div>
-      <div class="cwe-grid"><label class="cwe-f"><span>Pau (libre)</span><input type="color" data-k="dataUs" value="${t.dataUs || "#f6c400"}"></label><label class="cwe-f"><span>Adversaire (libre)</span><input type="color" data-k="dataThem" value="${t.dataThem || "#d7263d"}"></label></div></div>
+      <div class="cwe-grid"><label class="cwe-f"><span>${esc(TS())} (libre)</span><input type="color" data-k="dataUs" value="${t.dataUs || "#f6c400"}"></label><label class="cwe-f"><span>Adversaire (libre)</span><input type="color" data-k="dataThem" value="${t.dataThem || "#d7263d"}"></label></div></div>
     <div class="cwe-sec"><b>PDF</b><div class="cwe-grid">${col("pdfMain","En-tête et titres", "#0a1f4f")}${col("pdfAcc","Accent (liseré, barres)", "#f6c400")}${col("pdfBg","Fond de page", "#ffffff")}</div></div>
     <div class="actions"><button class="btn danger" data-x="reset">Couleurs d'origine</button><span style="flex:1"></span><button class="btn" data-x="no">Annuler</button><button class="btn primary" data-x="ok">Enregistrer</button></div></div>`;
   document.body.appendChild(bg);
@@ -1615,8 +1620,8 @@ function openSettings(){
   bg.addEventListener("click", e => { const b = e.target.closest("[data-pal]"); if (!b) return; pal = DATA_PALETTES[+b.dataset.pal]; bg.querySelectorAll(".pal").forEach(x => x.classList.toggle("on", x === b)); touched.delete("dataUs"); touched.delete("dataThem");
     bg.querySelector('[data-k="dataUs"]').value = pal[1] || "#f6c400"; bg.querySelector('[data-k="dataThem"]').value = pal[2] || "#d7263d"; });
   bg.querySelector('[data-x="no"]').onclick = () => bg.remove();
-  bg.querySelector('[data-x="reset"]').onclick = () => save({...THEME_DEF});
-  bg.querySelector('[data-x="ok"]').onclick = () => { const o = read(), n = {...t, mode:o.mode, pdfMain:o.pdfMain, pdfAcc:o.pdfAcc, pdfBg:o.pdfBg}; ["bg","navy","pau","dataUs","dataThem"].forEach(k => { if (touched.has(k)) n[k] = o[k]; }); if (pal && !touched.has("dataUs")) n.dataUs = pal[1]; if (pal && !touched.has("dataThem")) n.dataThem = pal[2]; save(n); };
+  bg.querySelector('[data-x="reset"]').onclick = () => save({...THEME_DEF, teamName:t.teamName || "", teamShort:t.teamShort || ""});
+  bg.querySelector('[data-x="ok"]').onclick = () => { const o = read(), n = {...t, mode:o.mode, teamName:o.teamName.trim(), teamShort:o.teamShort.trim(), pdfMain:o.pdfMain, pdfAcc:o.pdfAcc, pdfBg:o.pdfBg}; ["bg","navy","pau","dataUs","dataThem"].forEach(k => { if (touched.has(k)) n[k] = o[k]; }); if (pal && !touched.has("dataUs")) n.dataUs = pal[1]; if (pal && !touched.has("dataThem")) n.dataThem = pal[2]; save(n); };
 }
 function render(){
   applyTheme();
@@ -1629,10 +1634,10 @@ function render(){
   const list = [...state.matches.values()].sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
   const scrollY = window.scrollY;
   const focusId = document.activeElement && document.activeElement.id;
-  const clubLogo = state.settings.clubLogo ? `<img src="${blobUrl(state.settings.clubLogo)}" alt="">` : "PAU";
+  const clubLogo = state.settings.clubLogo ? `<img src="${blobUrl(state.settings.clubLogo)}" alt="">` : esc(TS().toUpperCase().slice(0,4));
   app.innerHTML = `
   <header class="top"><div class="wrap">
-    <div class="brand"><div class="crest">${clubLogo}</div><div>Analyse-Data<small>Pau FC · analyse de match</small></div></div>
+    <div class="brand"><div class="crest">${clubLogo}</div><div>Analyse-Data<small>${esc(TN())} · analyse de match</small></div></div>
     <nav class="tabs" role="tablist">${[["collectif","Collectif"],["indiv","Indiv"],["codage","Codage"],["docs","Stockage"]].map(([k,l]) => `<button role="tab" data-act="view" data-v="${k}" aria-selected="${state.view===k}">${l}</button>`).join("")}</nav>
     <div class="spacer"></div>
     <label class="sr" for="match-select" hidden>Match</label>
@@ -1681,7 +1686,7 @@ document.addEventListener("click", async (evt) => {
       const shot = {id:uid(), tm, x:p.x, y:p.y, body:d.body, opp:d.opp, sit:d.sit, res:d.res, p:d.p || "", min: d.min === "" || d.min == null ? null : Number(d.min)};
       if (d.ev) shot.ev = d.ev;
       m.shots.push(shot); state.draft.ev = ""; state.shotSel = null; persist(m);
-      toast(`Tir ${tm === "us" ? "Pau" : "adverse"} ajouté · xG ${fmt1(xgOf(shot))}`, 1800);
+      toast(`Tir ${tm === "us" ? (TS()) : "adverse"} ajouté · xG ${fmt1(xgOf(shot))}`, 1800);
       render(); return;
     }
   }
@@ -1867,6 +1872,7 @@ function openMatchModal(m){
   const bg = modal(`<h3>Infos du match</h3>
     <div class="form">
       <label for="mm-title">Titre</label><input type="text" id="mm-title" value="${esc(m.title)}">
+      <label for="mm-team">Équipe analysée</label><div style="display:flex;gap:8px"><input type="text" id="mm-team" value="${esc(m.teamName || "")}" placeholder="${esc((state.settings.theme || {}).teamName || "Pau FC")}"><input type="text" id="mm-tshort" value="${esc(m.teamShort || "")}" placeholder="Nom court" style="width:110px"></div>
       <label for="mm-opp">Adversaire</label><input type="text" id="mm-opp" value="${esc(m.opponent)}" placeholder="Nom de l'équipe adverse">
       <label for="mm-color">Couleur adversaire</label>${colorField("mm-color", themCol(m))}
       <label for="mm-date">Date</label><input type="date" id="mm-date" value="${esc(m.date)}">
@@ -1883,7 +1889,7 @@ function openMatchModal(m){
   bg.querySelector('[data-x="no"]').onclick = () => bg.remove();
   bg.querySelector('[data-x="ok"]').onclick = () => {
     m.title = bg.querySelector("#mm-title").value.trim() || m.title;
-    m.opponent = bg.querySelector("#mm-opp").value.trim();
+    m.opponent = bg.querySelector("#mm-opp").value.trim(); m.teamName = bg.querySelector("#mm-team").value.trim(); m.teamShort = bg.querySelector("#mm-tshort").value.trim();
     m.oppColor = bg.querySelector("#mm-color").value;
     m.date = bg.querySelector("#mm-date").value; m.competition = bg.querySelector("#mm-comp").value.trim(); m.journee = bg.querySelector("#mm-journee").value.trim(); m.venue = bg.querySelector("#mm-venue").value;
     const su = bg.querySelector("#mm-su").value, sth = bg.querySelector("#mm-st").value;
@@ -1942,12 +1948,12 @@ function reportHTML(m){
   const st = teamStats(m), opp = themCol(m);
   const when = [m.competition, m.date ? new Date(m.date).toLocaleDateString("fr-FR") : ""].filter(Boolean).join(" · ");
   const head = (left, center, right) => `<div class="rh"><div>${left}</div><div>${center}</div><div style="text-align:right">${right}</div></div>`;
-  const foot = `<div class="rf"><span>Pau FC · Cellule analyse</span><span>${esc(m.title)}${state.half ? ` · ${state.half === 1 ? "1re" : "2e"} mi-temps` : ""}${m.sample ? " · données fictives" : ""}</span><span>Généré le ${new Date().toLocaleDateString("fr-FR")}</span></div>`;
+  const foot = `<div class="rf"><span>${esc(TN())} · Cellule analyse</span><span>${esc(m.title)}${state.half ? ` · ${state.half === 1 ? "1re" : "2e"} mi-temps` : ""}${m.sample ? " · données fictives" : ""}</span><span>Généré le ${new Date().toLocaleDateString("fr-FR")}</span></div>`;
   const d = (label, a, b, f) => { const tot = a+b, pa = tot ? a/tot*100 : 50; return `<div class="d"><b>${f(a)}</b><div><div class="l">${esc(label)}</div><div class="bb"><i style="display:block;width:${tot?pa:0}%;background:${usPrint()}"></i><i style="display:block;width:${tot?100-pa:0}%;background:${opp}"></i></div></div><b class="r">${f(b)}</b></div>`; };
   if (state.view === "indiv" && state.player){
     const ps = state.scope === "season" ? mergeStats([...state.matches.values()].filter(x => (!x.sample || x.id === m.id) && playerList(x).includes(state.player)).map(x => playerStats(halfView(x), state.player))) : playerStats(m, state.player);
     const actions = Object.entries(ps.byAction).sort((a,b) => b[1]-a[1]).slice(0,14);
-    return `<div class="rpt">${head(`<div class="t">${esc(state.player)}</div><div class="m">Pau FC · fiche individuelle</div>`,
+    return `<div class="rpt">${head(`<div class="t">${esc(state.player)}</div><div class="m">${esc(TN())} · fiche individuelle</div>`,
       `<div class="sc">${fmt1(ps.xg)}</div><div class="sx">xG · ${ps.shots.length} tirs · ${ps.goals} but${ps.goals>1?"s":""}</div>`,
       `<div class="t">${state.scope === "season" ? "Tous les matchs" : "vs " + esc(m.opponent || "Adversaire")}</div><div class="m">${esc(when)}</div>`)}
       <div class="rb">
@@ -1961,7 +1967,7 @@ function reportHTML(m){
       </div>${foot}</div>`;
   }
   const rows = duelRows(m, st).slice(0, 16);
-  return `<div class="rpt">${head(`<div class="t">Pau FC</div><div class="m">${m.venue === "ext" ? "Extérieur" : "Domicile"}</div>`,
+  return `<div class="rpt">${head(`<div class="t">${esc(TN())}</div><div class="m">${m.venue === "ext" ? "Extérieur" : "Domicile"}</div>`,
     `<div class="sc">${st.us.goals} – ${st.them.goals}</div><div class="sx">${m.shots.length ? `xG ${fmt1(st.us.xg)} – ${fmt1(st.them.xg)}` : esc(when)}</div>`,
     `<div class="t" style="color:${lum(opp) < .05 ? '#ffffff' : opp}">${esc(m.opponent || "Adversaire")}</div><div class="m">${esc(when)}</div>`)}
     ${(() => { const on = pdfOn, ec = k => entryCounts(m, k), hasC = on("corners") && (m.corners || []).length;
@@ -1969,10 +1975,10 @@ function reportHTML(m){
         hasC ? `<div class="box"><h4>Corners</h4>${cornerPrintHTML(m, opp, !on("comparatif"))}</div>` : ""].join("");
       const col2 = [on("tirs") ? `<div class="box"><h4>Zones de tir · taille = xG</h4>${shotMapSVG(m, {print:true})}
         <table style="margin-top:4px;font-size:10.5px"><tr><td></td><td class="n">Tirs</td><td class="n">Cadrés</td><td class="n">Non cadrés</td><td class="n">Contrés</td><td class="n">Surface</td><td class="n">Hors surf.</td></tr>
-        ${[["us","Pau"],["them","Adv."]].map(([tm,l]) => { const f = finitionStats(m, tm); return `<tr><td><b>${l}</b></td><td class="n">${f.total}</td><td class="n">${f.onTarget}</td><td class="n">${f.res.horscadre}</td><td class="n">${f.res.contre}</td><td class="n">${f.surf}</td><td class="n">${f.hors}</td></tr>`; }).join("")}</table></div>` : "",
-        on("entrees") ? `<div class="ent" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="box"><h4>Entrées 20 m Pau · ${ec("us").total}</h4>${entriesSVG(ec("us"), usPrint(), "us", false, true)}</div><div class="box"><h4>Entrées 20 m adv. · ${ec("them").total}</h4>${entriesSVG(ec("them"), opp, "them", false, true)}</div></div>` : ""].join("");
-      const col3 = [on("recup") ? `<div class="box"><h4>Récupérations Pau · ${zoneCounts(m,"recup").total}</h4>${zoneGridSVG(zoneCounts(m,"recup"), usPrint(), {print:true})}</div>` : "",
-        on("perte") ? `<div class="box"><h4>Pertes Pau · ${zoneCounts(m,"perte").total}</h4>${zoneGridSVG(zoneCounts(m,"perte"), opp, {print:true})}</div>` : "",
+        ${[["us",(TS())],["them","Adv."]].map(([tm,l]) => { const f = finitionStats(m, tm); return `<tr><td><b>${l}</b></td><td class="n">${f.total}</td><td class="n">${f.onTarget}</td><td class="n">${f.res.horscadre}</td><td class="n">${f.res.contre}</td><td class="n">${f.surf}</td><td class="n">${f.hors}</td></tr>`; }).join("")}</table></div>` : "",
+        on("entrees") ? `<div class="ent" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="box"><h4>Entrées 20 m ${esc(TS())} · ${ec("us").total}</h4>${entriesSVG(ec("us"), usPrint(), "us", false, true)}</div><div class="box"><h4>Entrées 20 m adv. · ${ec("them").total}</h4>${entriesSVG(ec("them"), opp, "them", false, true)}</div></div>` : ""].join("");
+      const col3 = [on("recup") ? `<div class="box"><h4>Récupérations ${esc(TS())} · ${zoneCounts(m,"recup").total}</h4>${zoneGridSVG(zoneCounts(m,"recup"), usPrint(), {print:true})}</div>` : "",
+        on("perte") ? `<div class="box"><h4>Pertes ${esc(TS())} · ${zoneCounts(m,"perte").total}</h4>${zoneGridSVG(zoneCounts(m,"perte"), opp, {print:true})}</div>` : "",
         on("xg") && m.shots.length ? `<div class="box"><h4>xG cumulés</h4>${xgChartSVG(m, true)}</div>` : ""].join("");
       const cols = [[col1, "300px"], [col2, "1fr"], [col3, "300px"]].filter(c => c[0]);
       if (cols.length && !cols.some(c => c[1] === "1fr")) cols.forEach(c => c[1] = "1fr");
@@ -1986,7 +1992,7 @@ const pdfOn = k => !pdfOff().includes(k);
 function cornerPrintHTML(m, opp, big){
   const side = tm => { const list = (m.corners || []).filter(c => c.tm === tm), cs = cornerStats(list), color = tm === "us" ? usPrint() : opp;
     const svg = cornerMapSVG(list, color, true).replace(/viewBox="[^"]*"/, `viewBox="${L-30} ${big ? 4 : 12} 31 ${big ? W-8 : W-24}"`);
-    return `<div><div style="font-size:10px;font-weight:700;margin-bottom:2px">${tm === "us" ? "Pau" : "Adv."} · ${cs.n}</div>${svg}
+    return `<div><div style="font-size:10px;font-weight:700;margin-bottom:2px">${tm === "us" ? (TS()) : "Adv."} · ${cs.n}</div>${svg}
       <div style="font-size:9.5px;line-height:1.35">Rentrant ${cs.type.in} · Sortant ${cs.type.out} · À deux ${cs.type.deux}<br>1er au ballon ${pct(cs.first[tm], cs.n)} · Tir ${cs.res.tir} · But ${cs.res.but}<br>Sortie GB ${cs.res.gb} · Dégagé ${cs.res.deg}</div></div>`; };
   return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${side("us")}${side("them")}</div>`; }
 function openPdfPreview(){
@@ -2073,7 +2079,7 @@ function ctxLabels(m, t){
   const c = liveClock(m), mt = matchTime(m, t), H = c.halfLen;
   const q = mt.half === 1 ? Math.min(2, Math.floor(mt.sec/(H*20))) : 3 + Math.min(2, Math.max(0, Math.floor((mt.sec - H*60)/(H*20))));
   const minute = mt.extra > 0 ? (mt.half === 1 ? H : 2*H) + "+" + (Math.floor(mt.extra/60) + 1) : String(Math.floor(mt.sec/60) + 1);
-  return [["COMPETITION", m.competition], ["JOURNEE", m.journee], ["LIEU", m.venue === "ext" ? "EXTERIEUR" : "DOMICILE"], ["EQUIPE","PAU FC"], ["ADV", (m.opponent||"").toUpperCase()],
+  return [["COMPETITION", m.competition], ["JOURNEE", m.journee], ["LIEU", m.venue === "ext" ? "EXTERIEUR" : "DOMICILE"], ["EQUIPE",(TN().toUpperCase())], ["ADV", (m.opponent||"").toUpperCase()],
     ["Halftime", "MT" + mt.half], ["QT", ["0-15","16-30","31-45","46-60","61-75","76-90"][q]], ["Minute", minute]].filter(x => x[1]);
 }
 function addLabel(ev, g, text, toggle){
@@ -2530,7 +2536,7 @@ function renderCodage(m){
     ${CWK === "i" ? `<section class="panel c5"><div class="ph"><h2>Bilan indiv du match</h2><span class="sub">clique un joueur pour sa fiche</span></div>${indivSummaryHTML(m)}${cwLiveIndHTML(m)}</section>` : `<section class="panel c5 ${toPlace ? "cw-float " + (state.cwFloat || "") : ""}">${toPlace ? (() => { const same = live.filter(e => e.n === toPlace.n).sort((a,b) => a.t - b.t); const no = same.findIndex(e => e.id === toPlace.id) + 1;
       return `<div class="cw-float-bar"><b>${esc(toPlace.k === "RECUP" ? "RÉCUP" : toPlace.k)} N°${no}</b><span class="hint">${esc(toPlace.n)} · ${clockLabel(m, pressTime(toPlace))} · ${no}/${same.length}</span><span style="flex:1"></span>
         <button class="btn sm" data-act="cw-float" data-v="${state.cwFloat === "min" ? "" : "min"}" aria-label="${state.cwFloat === "min" ? "Rouvrir" : "Réduire"}">${state.cwFloat === "min" ? "▴" : "▾"}</button><button class="btn sm" data-act="cw-float" data-v="${state.cwFloat === "big" ? "" : "big"}" aria-label="${state.cwFloat === "big" ? "Taille normale" : "Agrandir"}">${state.cwFloat === "big" ? "⤡" : "⤢"}</button></div>`; })() : ""}<div class="ph"><h2>${isLoc ? (toPlace.k === "RECUP" ? "Position de la récupération" : "Position de la perte") : "Position des tirs"}</h2><span class="sub">${isLoc ? "terrain 18 zones" : "pour le xG"}</span></div>
-      ${isLoc ? `<p style="margin:0 0 8px"><span class="cw-code" style="background:${btnColor(toPlace)};color:${inkOn(btnColor(toPlace))}">${esc(toPlace.n)}</span> à ${mmss(pressTime(toPlace))} : clique l'endroit exact${toPlace.b ? ` (zone codée : ${esc(toPlace.b)})` : ""}. Pau attaque vers la droite.</p>
+      ${isLoc ? `<p style="margin:0 0 8px"><span class="cw-code" style="background:${btnColor(toPlace)};color:${inkOn(btnColor(toPlace))}">${esc(toPlace.n)}</span> à ${mmss(pressTime(toPlace))} : clique l'endroit exact${toPlace.b ? ` (zone codée : ${esc(toPlace.b)})` : ""}. ${esc(TS())} attaque vers la droite.</p>
         <div class="row" style="margin:0 0 6px"><label class="l" for="cw-locp">${toPlace.k === "RECUP" ? "Joueur qui récupère" : "Joueur qui perd"}</label> <select class="f" id="cw-locp" data-id="${toPlace.id}">${playerOptions(m, ((toPlace.l || []).find(x => x.g === "JOUEUR") || {}).t || "")}</select></div>
         ${toPlace.px != null ? `<p class="hint">Déjà placée en ${zoneFromXY(toPlace.px, toPlace.py)} : clique pour la déplacer.</p>` : ""}
         <div style="margin-top:4px">${locPickerSVG(toPlace)}</div>
@@ -2561,7 +2567,7 @@ function locPickerSVG(ev){
   for (const z of ZONES){ const r = zoneRect(z); g += `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="none" stroke="var(--pitch-line)" stroke-width=".3" stroke-dasharray="1.2 1"/><text x="${r.x+1.5}" y="${r.y+4.2}" font-size="3" fill="var(--ink-2)">${z}</text>`; }
   const hl = band != null ? `<rect x="${band*L/4}" y="0" width="${L/4}" height="${W}" fill="var(--pau)" fill-opacity=".18"/>` : "";
   return `${svgOpen(`-2 -6 ${L+4} ${W+8}`, "editing", `data-role="cwloc" data-ev="${ev.id}"`)}${arrowDefs()}${pitchLines()}${hl}${g}
-    <line x1="${L*0.62}" y1="-3" x2="${L*0.82}" y2="-3" stroke="var(--ink-2)" stroke-width=".5" marker-end="url(#arr)"/><text x="${L*0.6}" y="-1.8" text-anchor="end" font-size="3.6" fill="var(--ink-2)">SENS DU JEU PAU</text></svg>`;
+    <line x1="${L*0.62}" y1="-3" x2="${L*0.82}" y2="-3" stroke="var(--ink-2)" stroke-width=".5" marker-end="url(#arr)"/><text x="${L*0.6}" y="-1.8" text-anchor="end" font-size="3.6" fill="var(--ink-2)">SENS DU JEU ${esc(TS().toUpperCase())}</text></svg>`;
 }
 // Stats simples en direct du joueur suivi (ou du dernier joueur codé)
 function cwLiveIndHTML(m){
@@ -2833,11 +2839,11 @@ document.addEventListener("keydown", (evt) => {
    Assistant Claude intégré (lecture et modification des données du match)
    ========================================================= */
 const AI = {sample:null, open:false, msgs:[], busy:false, ctrl:null, log:[]};
-const AI_RULES = `Tu es l'assistant analyse du Pau FC, intégré au dashboard de match de Lucas (cellule analyse). Réponds en français, de façon concise et concrète, comme un analyste vidéo/data à son staff.
+const AI_RULES = `Tu es l'assistant de la cellule analyse, intégré au dashboard de match de Lucas (cellule analyse). Réponds en français, de façon concise et concrète, comme un analyste vidéo/data à son staff.
 - Lis toujours les données avec les outils (lire_match, lire_joueur) avant de commenter un chiffre. N'invente aucune donnée.
 - Pour modifier le match (infos, couleurs, score, tirs, récupérations/pertes, entrées 20 m, statistiques), utilise les outils puis confirme en une phrase ce que tu as changé.
 - Repère des tirs : x de 0 à 105 m vers le but attaqué par l'équipe qui tire (but en x = 105), y de 0 à 68 avec 34 = axe ; y < 34 = côté gauche de l'attaquant. Exemples : point de penalty = (94, 34) ; 6 m dans l'axe = (99, 34) ; 20 m côté droit = (85, 45).
-- Récupérations/pertes : position exacte possible en x (0-105, sens du jeu de Pau) et y (0-68, 0 = côté gauche de Pau). Zones Z1–Z18 : 6 bandes de 17,5 m × 3 couloirs dans le sens du jeu de Pau. Z1-Z3 près du but de Pau, Z16-Z18 près du but adverse ; dans chaque bande, gauche puis axe puis droite (Z1 gauche, Z2 axe, Z3 droite).
+- Récupérations/pertes : position exacte possible en x (0-105, sens du jeu de l'équipe analysée) et y (0-68, 0 = côté gauche de l'équipe analysée). Zones Z1–Z18 : 6 bandes de 17,5 m × 3 couloirs dans le sens du jeu de l'équipe analysée. Z1-Z3 près du but de l'équipe analysée, Z16-Z18 près du but adverse ; dans chaque bande, gauche puis axe puis droite (Z1 gauche, Z2 axe, Z3 droite).
 - xG : régression logistique sur distance et angle, ajustée par surface de contact (tête, autre), adversaires entre ballon et but (gardien compris), contre-attaque / CPA ; penalty = 0,76.
 - Codage indiv : les séquences joueur (fenêtre indiv) apparaissent dans lire_joueur (codageIndiv : action, total, réussies).
 - Tu ne peux pas modifier le design ni les fonctionnalités de l'application : pour ça, Lucas doit le demander à Claude dans son projet "RAPPORT DATAS FOOT".`;
@@ -2858,8 +2864,8 @@ function aiTools(){
   const team = v => /adv|them|oppo/i.test(String(v)) ? "them" : "us";
   const oneOf = (v, list, d) => list.includes(v) ? v : d;
   return [
-    {name:"lire_match", description:"Lit toutes les statistiques du match affiché : comparatif Pau/adversaire, zones de récupérations et de pertes, entrées 20 m, liste des tirs avec xG, joueurs.", execute: () => matchBrief(m())},
-    {name:"lire_joueur", description:"Lit les statistiques d'un joueur de Pau sur le match affiché.", inputSchema:{type:"object", properties:{nom:{type:"string"}}, required:["nom"]},
+    {name:"lire_match", description:"Lit toutes les statistiques du match affiché : comparatif équipe/adversaire, zones de récupérations et de pertes, entrées 20 m, liste des tirs avec xG, joueurs.", execute: () => matchBrief(m())},
+    {name:"lire_joueur", description:"Lit les statistiques d'un joueur de l'équipe analysée sur le match affiché.", inputSchema:{type:"object", properties:{nom:{type:"string"}}, required:["nom"]},
       execute: ({nom}) => { const mm = m(); const n = playerList(mm).find(p => norm(p) === norm(nom)) || playerList(mm).find(p => norm(p).includes(norm(nom)));
         if (!n) return {erreur:"Joueur introuvable", joueurs:playerList(mm)}; const ps = playerStats(mm, n);
         return {nom:n, actions:ps.actions, actionsDetail:ps.byAction, tirs:ps.shots.length, xg:+ps.xg.toFixed(2), buts:ps.goals, recuperations:ps.recups, pertes:ps.pertes, evaluations:ps.notes, codageIndiv:Object.values(ps.ind || {}).map(x => ({action:x.k, total:x.n, reussies:x.ok, ratees:x.ko})), remarques:ps.remarks.slice(0,20).map(r => r.txt), zonesRecup:Object.fromEntries(Object.entries(ps.zr.counts).filter(([,v])=>v)), zonesPertes:Object.fromEntries(Object.entries(ps.zp.counts).filter(([,v])=>v)), donneesImportees:ps.extra}; }},
@@ -2880,8 +2886,8 @@ function aiTools(){
         const r = done(mm, "tir modifié"); r.xg = +xgOf(s).toFixed(2); return r; }},
     {name:"supprimer_tir", description:"Supprime un tir (id fourni par lire_match).", inputSchema:{type:"object", properties:{id:{type:"string"}}, required:["id"]},
       execute: ({id}) => { const mm = m(); const n = mm.shots.length; mm.shots = mm.shots.filter(s => s.id !== id); return n === mm.shots.length ? {erreur:"Tir introuvable"} : done(mm, "tir supprimé"); }},
-    {name:"ajouter_actions", description:"Ajoute des actions saisies à la main : récupérations ou pertes de Pau dans une zone, ou entrées dans les 20 m par couloir.",
-      inputSchema:{type:"object", properties:{type:{type:"string", enum:["recuperation","perte","entree20m"]}, nombre:{type:"integer", minimum:1, maximum:30}, zone:{type:"string", description:"Z1 à Z18 (récupération/perte), facultatif si x/y donnés"}, x:{type:"number", description:"position exacte, 0-105 dans le sens du jeu de Pau"}, y:{type:"number", description:"0-68, 0 = gauche de Pau"}, equipe:{type:"string", enum:["pau","adv"], description:"pour entree20m"}, couloir:{type:"string", enum:["gauche","axe","droite"], description:"pour entree20m"}}, required:["type"]},
+    {name:"ajouter_actions", description:"Ajoute des actions saisies à la main : récupérations ou pertes de l'équipe analysée dans une zone, ou entrées dans les 20 m par couloir.",
+      inputSchema:{type:"object", properties:{type:{type:"string", enum:["recuperation","perte","entree20m"]}, nombre:{type:"integer", minimum:1, maximum:30}, zone:{type:"string", description:"Z1 à Z18 (récupération/perte), facultatif si x/y donnés"}, x:{type:"number", description:"position exacte, 0-105 dans le sens du jeu de l'équipe analysée"}, y:{type:"number", description:"0-68, 0 = gauche de l'équipe analysée"}, equipe:{type:"string", enum:["pau","adv"], description:"pour entree20m"}, couloir:{type:"string", enum:["gauche","axe","droite"], description:"pour entree20m"}}, required:["type"]},
       execute: (a) => { const mm = m(); const n = clamp(Math.round(+a.nombre || 1),1,30);
         for (let i=0;i<n;i++){
           if (a.type === "entree20m") mm.events.push({id:uid(), n:"20M (saisie)", k:"20M", tm:team(a.equipe), t:0, e:0, c: a.couloir === "gauche" ? "G" : a.couloir === "droite" ? "D" : "A", man:1});
@@ -2894,7 +2900,7 @@ function aiTools(){
         const match = e => a.type === "entree20m" ? (e.k === "20M" && e.tm === team(a.equipe) && e.c === (a.couloir === "gauche" ? "G" : a.couloir === "droite" ? "D" : "A")) : (e.k === (a.type === "perte" ? "PERTE" : "RECUP") && e.tm === "us" && e.z === String(a.zone||"").toUpperCase());
         for (const manualFirst of [true, false]) for (let i = mm.events.length-1; i >= 0 && removed < n; i--){ const e = mm.events[i]; if (match(e) && (!manualFirst || e.man)){ mm.events.splice(i,1); removed++; } }
         return removed ? done(mm, `${removed} action(s) retirée(s)`) : {erreur:"Aucune action correspondante"}; }},
-    {name:"definir_statistique", description:"Ajoute ou met à jour une ligne du comparatif Pau / adversaire (ex. « Passes réussies (%) »). supprimer=true pour la retirer.",
+    {name:"definir_statistique", description:"Ajoute ou met à jour une ligne du comparatif équipe / adversaire (ex. « Passes réussies (%) »). supprimer=true pour la retirer.",
       inputSchema:{type:"object", properties:{libelle:{type:"string"}, pau:{type:"number"}, adversaire:{type:"number"}, supprimer:{type:"boolean"}}, required:["libelle"]},
       execute: (a) => { const mm = m(); const i = mm.stats.findIndex(s => norm(s.label) === norm(a.libelle));
         if (a.supprimer){ if (i < 0) return {erreur:"Statistique introuvable"}; mm.stats.splice(i,1); return done(mm, "statistique retirée"); }
