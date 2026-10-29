@@ -259,8 +259,16 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .chip{border:1px solid var(--line,rgba(127,127,127,.35));background:transparent;color:inherit;border-radius:999px;padding:3px 10px;font:inherit;font-size:12px;cursor:pointer}.chip[aria-pressed="true"]{background:var(--us,var(--pau));color:#000;border-color:transparent;font-weight:600}
 .modal.wide{max-width:760px;width:96vw}
 .pdf-parts{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13px;margin:0 0 10px}.pdf-parts label{display:inline-flex;gap:4px;align-items:center;cursor:pointer}
+.combo-bar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:8px 12px;margin:0 0 10px;border-radius:10px;background:var(--us,var(--pau));color:#000}.combo-bar .hint{color:rgba(0,0,0,.7)}.combo-bar .btn{background:rgba(255,255,255,.85)}
+.combo-f{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}.combo-f input[type=search]{flex:1;min-width:160px}
+.combo-tools{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.combo-list{max-height:46vh;overflow:auto;border:1px solid var(--line,rgba(127,127,127,.25));border-radius:8px}
+.combo-row{display:flex;gap:10px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--line,rgba(127,127,127,.15));cursor:pointer;font-size:13px}.combo-row:hover{background:rgba(127,127,127,.08)}
+.folder-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px}
+select.f.sm{padding:3px 6px;font-size:12px}
 .vp{position:fixed;right:16px;bottom:16px;z-index:60;width:560px;min-width:300px;max-width:96vw;background:#0d1626;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.45);resize:both;overflow:hidden;display:flex;flex-direction:column}
 .vp[hidden]{display:none}
+.vp.vp-out{position:static;width:100%;height:100vh;max-width:none;border:0;border-radius:0;resize:none}.vp.vp-out .vp-bar{cursor:default}
 .vp-bar{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--navy,#14213d);cursor:move;user-select:none;font-size:13px}
 .vp-bar .vp-name{flex:1;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
 .vp-bar button,.vp-ctl button{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:5px;padding:3px 8px;cursor:pointer;font:inherit;font-size:12px}
@@ -801,6 +809,7 @@ function eventHalf(m, e){
   const cut = halfSplit(m); return cut == null ? null : e.t < cut ? 1 : 2;
 }
 function shotHalf(m, s){
+  if (s._h) return s._h;
   if (s.ev){ const e = m.events.find(x => x.id === s.ev); if (e) return eventHalf(m, e); }
   return s.min == null ? null : s.min > ((m.live && m.live.halfLen) || 45) ? 2 : 1;
 }
@@ -843,8 +852,67 @@ function teamStats(m){
   st.bip = ps; st.bipSpan = matchSpan(m); st.bipPct = st.bipSpan ? Math.min(100, ps/st.bipSpan*100) : 0;
   return st;
 }
+// Données combinées : plusieurs matchs cumulés (lecture seule) ; la mi-temps de chaque action est figée depuis son match d'origine
+let comboCache = null;
+function comboMatch(){
+  const srcs = state.combo.map(id => state.matches.get(id)).filter(Boolean); if (!srcs.length) return null;
+  const key = srcs.map(x => x.id + ":" + (x.updatedAt || 0)).join("|"); if (comboCache && comboCache.key === key) return comboCache.m;
+  const h0 = state.half; let su = 0, sth = 0; const spans = {0:0, 1:0, 2:0};
+  for (const x of srcs){ state.half = 0; const st = teamStats(x); su += st.us.goals; sth += st.them.goals;
+    for (const h of [0,1,2]){ state.half = h; spans[h] += matchSpan(halfView(x)); } }
+  state.half = h0;
+  const comps = [...new Set(srcs.map(x => x.competition).filter(Boolean))];
+  const m = {id:"combo", combo:true, srcIds:srcs.map(x => x.id), title:`Données combinées · ${srcs.length} matchs`, opponent:`${srcs.length} matchs`, oppColor: srcs[0].oppColor, date:"", competition: comps.join(", "), journee:"", venue:"",
+    teamName: srcs[0].teamName || "", teamShort: srcs[0].teamShort || "", scoreUs: su, scoreThem: sth, _spans: spans, stats: [], players: [...new Set(srcs.flatMap(x => x.players || []))], perPlayer: comboPerPlayer(srcs), oppLogo: null, live: null, source: null,
+    events: srcs.flatMap(x => x.events.map(e => ({...e, h: e.h || eventHalf(x, e) || undefined, src: x.id}))),
+    shots: srcs.flatMap(x => x.shots.map(sh => ({...sh, _h: shotHalf(x, sh) || undefined, src: x.id}))),
+    corners: srcs.flatMap(x => (x.corners || []).map(c => ({...c, src: x.id}))), video: null};
+  comboCache = {key, m}; return m; }
+function comboPerPlayer(srcs){ const out = {};
+  srcs.forEach(x => Object.entries(x.perPlayer || {}).forEach(([pl, o]) => { const t = out[pl] = out[pl] || {}; Object.entries(o || {}).forEach(([k, v]) => { if (typeof v === "number") t[k] = (t[k] || 0) + v; else if (!(k in t)) t[k] = v; }); }));
+  return out; }
+function comboBarHTML(){ const m = current(); if (!m.combo) return "";
+  const names = m.srcIds.map(id => state.matches.get(id)).filter(Boolean).map(x => esc(x.opponent || x.title));
+  return `<div class="combo-bar"><b>⊕ Données combinées · ${m.srcIds.length} matchs</b><span class="hint">${names.join(" · ")}</span><span style="flex:1"></span><button class="btn sm" data-act="combo-edit">Modifier la sélection</button><button class="btn sm" data-act="combo-off">Revenir à un seul match</button></div>`; }
+function openComboModal(){
+  const all = [...state.matches.values()].filter(x => !x.sample && !x.combo).sort((a,b) => String(b.date || "").localeCompare(String(a.date || "")) || (b.createdAt||0) - (a.createdAt||0));
+  const sel = new Set(state.combo || []); const f = {comp:"", venue:"", folder:"", q:"", from:"", to:""};
+  const comps = [...new Set(all.map(x => x.competition).filter(Boolean))].sort(), folders = folderList();
+  const bg = modal(`<h3>Combiner les données</h3><p class="hint">Coche les matchs à cumuler. Les statistiques collectives, individuelles et le PDF portent alors sur l'ensemble (lecture seule).</p>
+    <div class="combo-f"><select class="f" data-f="comp"><option value="">Toutes compétitions</option>${comps.map(c => `<option>${esc(c)}</option>`).join("")}</select>
+      <select class="f" data-f="venue"><option value="">Domicile et extérieur</option><option value="dom">Domicile</option><option value="ext">Extérieur</option></select>
+      ${folders.length ? `<select class="f" data-f="folder"><option value="">Tous les dossiers</option>${folders.map(c => `<option>${esc(c)}</option>`).join("")}</select>` : ""}
+      <label class="hint">du <input type="date" class="f" data-f="from"></label><label class="hint">au <input type="date" class="f" data-f="to"></label>
+      <input type="search" class="f" data-f="q" placeholder="Adversaire, titre…"></div>
+    <div class="combo-tools"><button class="btn sm" data-x="all">Tout cocher (filtrés)</button><button class="btn sm" data-x="none">Tout décocher</button><span class="hint" id="combo-n"></span></div>
+    <div class="combo-list" id="combo-list"></div>
+    <div class="actions"><button class="btn" data-x="no">Annuler</button><button class="btn primary" data-x="ok">Combiner</button></div>`, "wide");
+  const vis = () => all.filter(x => (!f.comp || x.competition === f.comp) && (!f.venue || (x.venue === "ext" ? "ext" : "dom") === f.venue) && (!f.folder || x.folder === f.folder)
+    && (!f.from || (x.date && x.date >= f.from)) && (!f.to || (x.date && x.date <= f.to)) && (!f.q || (x.title + " " + (x.opponent || "")).toLowerCase().includes(f.q.toLowerCase())));
+  const draw = () => { const v = vis(); bg.querySelector("#combo-list").innerHTML = v.length ? v.map(x => `<label class="combo-row"><input type="checkbox" data-id="${x.id}" ${sel.has(x.id) ? "checked" : ""}><span class="pill them" style="--opp:${themCol(x)};--opp-ink:${inkOn(themCol(x))}">${esc(x.opponent || "?")}</span><span>${esc(x.title)}</span><span class="hint">${esc(x.date || "")}${x.competition ? " · " + esc(x.competition) : ""} · ${x.venue === "ext" ? "Ext." : "Dom."}${x.folder ? " · 📁 " + esc(x.folder) : ""}</span></label>`).join("") : `<div class="empty">Aucun match ne correspond aux filtres.</div>`;
+    bg.querySelector("#combo-n").textContent = `${sel.size} match${sel.size > 1 ? "s" : ""} coché${sel.size > 1 ? "s" : ""}`; };
+  draw();
+  bg.addEventListener("input", e => { const k = e.target.dataset.f; if (k){ f[k] = e.target.value; draw(); } });
+  bg.addEventListener("change", e => { const id = e.target.dataset.id; if (id){ e.target.checked ? sel.add(id) : sel.delete(id); draw(); } });
+  bg.addEventListener("click", e => { const x = e.target.closest("[data-x]"); if (!x) return; const k = x.dataset.x;
+    if (k === "all"){ vis().forEach(m => sel.add(m.id)); draw(); } else if (k === "none"){ sel.clear(); draw(); }
+    else if (k === "no"){ bg.remove(); render(); }
+    else if (k === "ok"){ if (sel.size < 1){ toast("Coche au moins un match."); return; } state.combo = all.filter(m => sel.has(m.id)).map(m => m.id); comboCache = null; if (state.view === "codage" || state.view === "docs") state.view = "collectif"; bg.remove(); render(); toast(`${state.combo.length} matchs combinés.`, 1500); } });
+}
+// Dossiers (onglet Stockage) : liste dans les réglages ; m.folder pour les matchs, settings.docFolders[id] pour les fichiers
+function folderList(){ return (state.settings.folders || []).slice(); }
+async function saveSettings(){ if (S.db){ try { await S.db.doc("settings/app").set(state.settings); } catch { toast("Réglages non enregistrés pour l'instant."); } } else { try { localStorage.setItem("paufc-settings-local", JSON.stringify(state.settings)); } catch {} } }
+function folderBarHTML(){ const fs = folderList(), cur = state.folder || "";
+  return `<div class="folder-bar"><span class="hint">Dossiers :</span><button class="chip" data-act="folder" data-v="" aria-pressed="${!cur}">Tous</button>${fs.map(f => `<button class="chip" data-act="folder" data-v="${esc(f)}" aria-pressed="${cur === f}">📁 ${esc(f)}</button>`).join("")}<button class="chip" data-act="folder" data-v="__none" aria-pressed="${cur === "__none"}">Sans dossier</button>
+    <button class="btn sm" data-act="folder-new">+ Nouveau dossier</button>${cur && cur !== "__none" ? `<button class="btn sm" data-act="folder-ren">Renommer</button><button class="btn sm danger" data-act="folder-del">Supprimer le dossier</button>` : ""}</div>`; }
+function inFolder(f){ const cur = state.folder || ""; return !cur || (cur === "__none" ? !f : f === cur); }
+function folderSelect(kind, id, val){ const fs = folderList(); if (!fs.length) return "";
+  return `<select class="f sm" data-act="folder-move" data-kind="${kind}" data-id="${id}" aria-label="Dossier"><option value="">Sans dossier</option>${fs.map(f => `<option ${f === val ? "selected" : ""}>${esc(f)}</option>`).join("")}</select>`; }
+function folderAsk(title, val, cb){ const bg = modal(`<h3>${title}</h3><input type="text" class="f" id="fd-name" value="${esc(val || "")}" placeholder="Ex. Saison 2026-27, Adversaires N1…" style="width:100%"><div class="actions"><button class="btn" data-x="no">Annuler</button><button class="btn primary" data-x="ok">Valider</button></div>`);
+  const ok = () => { const v = bg.querySelector("#fd-name").value.trim(); if (!v) return; bg.remove(); cb(v); };
+  bg.querySelector('[data-x="no"]').onclick = () => bg.remove(); bg.querySelector('[data-x="ok"]').onclick = ok; bg.querySelector("#fd-name").addEventListener("keydown", e => { if (e.key === "Enter") ok(); }); bg.querySelector("#fd-name").focus(); }
 // Ballon in play = durée cumulée des séquences ATTAQUE + DEFENSE ; rapportée au temps de jeu écoulé (pause de mi-temps exclue)
-function matchSpan(m){ const c = m.live, h = state.half, k2 = c ? k2At(c) : null;
+function matchSpan(m){ if (m._spans) return m._spans[state.half || 0] || 0; const c = m.live, h = state.half, k2 = c ? k2At(c) : null;
   if (c && (c.run || c.base > 0)){ const T = nowSec(m); return h === 1 ? (k2 != null ? Math.min(T, k2) : T) : h === 2 ? (k2 != null ? Math.max(0, T - k2) : 0) : T; }
   const ev = teamEvents(m); if (!ev.length) return 0;
   return Math.max(...ev.map(e => e.e ?? e.t ?? 0)) - Math.min(...ev.map(e => e.t ?? 0)); }
@@ -1014,6 +1082,7 @@ function lsWrite(){
 }
 const saveTimers = {};
 function persist(m){
+  if (m.combo){ toast("Données combinées : lecture seule. Ouvre un match pour le modifier.", 2500); return; }
   m.updatedAt = Date.now();
   if (m.sample) return;
   if (S.mode === "local"){ lsWrite(); return; }
@@ -1059,6 +1128,7 @@ async function initStorage(){
   render();
 }
 function current(){
+  if (state.combo && state.combo.length && state.view !== "codage"){ const cm = comboMatch(); if (cm) return cm; }
   let m = state.currentId && state.matches.get(state.currentId);
   if (!m){
     const list = [...state.matches.values()].filter(x => !x.sample).sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
@@ -1330,7 +1400,7 @@ function sampleNote(m){
   return `<div class="sample-note"><span><strong>Match d'exemple, données fictives.</strong> Importe ton XML LongoMatch/Nacsport/Sportscode, un Excel ou un CSV pour voir tes vrais chiffres.</span><button class="btn primary" data-act="import">Importer un fichier</button></div>`;
 }
 
-function halfBar(){ return `<div class="half-bar">${halfSegHTML()}${state.half ? `<span class="hint">Affichage limité à la ${state.half === 1 ? "1re" : "2e"} mi-temps. Les statistiques saisies à la main ou importées en total restent celles du match entier.</span>` : ""}</div>`; }
+function halfBar(){ return comboBarHTML() + `<div class="half-bar">${halfSegHTML()}${state.half ? `<span class="hint">Affichage limité à la ${state.half === 1 ? "1re" : "2e"} mi-temps. Les statistiques saisies à la main ou importées en total restent celles du match entier.</span>` : ""}</div>`; }
 function renderCollectif(m){
   const st = teamStats(m), opp = themCol(m);
   const zr = zoneCounts(m, "recup"), zp = zoneCounts(m, "perte");
@@ -1561,19 +1631,21 @@ function renderIndiv(m){
 
 function renderDocs(){
   const canStore = !!(S.assets && S.db);
-  const matches = [...state.matches.values()].filter(m => !m.sample).sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
+  const matches = [...state.matches.values()].filter(m => !m.sample && !m.combo && inFolder(m.folder)).sort((a,b) => (b.createdAt||0)-(a.createdAt||0));
   return `<div class="grid">
     <section class="panel c12"><div class="ph"><h2>Stockage des documents</h2><span class="sub">XML, Excel, CSV, PDF, images… gardés dans l'application</span></div>
       ${canStore ? `<div class="drop" id="drop-docs"><p><strong>Dépose tes fichiers ici</strong> ou</p><button class="btn primary" data-act="pick-docs">Choisir des fichiers</button><p class="hint">20 Mo maximum par fichier. Les fichiers de match (XML, Excel, CSV) peuvent être rouverts dans le dashboard d'un clic.</p></div>`
         : `<div class="empty">Le stockage de documents fonctionne quand l'application est ouverte sur claude.ai avec ton compte. Les matchs importés restent enregistrés dans ce navigateur en attendant.</div>`}
-      <div class="doclist" style="margin-top:14px">${state.docs.length ? state.docs.map(d => { const mt = d.matchId && state.matches.get(d.matchId);
+      ${folderBarHTML()}
+      <div class="doclist" style="margin-top:14px">${state.docs.length ? state.docs.filter(d => inFolder((state.settings.docFolders || {})[d.id])).map(d => { const mt = d.matchId && state.matches.get(d.matchId);
         return `<div class="doc"><div class="ext">${esc(d.ext || "?")}</div><div style="min-width:0"><div class="nm">${esc(d.name)}</div><div class="hint">${prettySize(d.size||0)} · ajouté le ${new Date(d.createdAt).toLocaleDateString("fr-FR")}${mt ? " · " + esc(mt.title) : ""}</div></div>
-        <div class="acts">${/^(xml|xlsx|xls|csv|json|txt)$/.test(d.ext) ? `<button class="btn sm" data-act="doc-open" data-id="${d.id}">Ouvrir dans le dashboard</button>` : ""}<button class="btn sm" data-act="doc-dl" data-id="${d.id}">Télécharger</button><button class="btn sm danger" data-act="doc-del" data-id="${d.id}">Supprimer</button></div></div>`; }).join("") : (canStore ? `<div class="empty">Aucun document pour l'instant.</div>` : "")}</div>
+        <div class="acts">${/^(xml|xlsx|xls|csv|json|txt)$/.test(d.ext) ? `<button class="btn sm" data-act="doc-open" data-id="${d.id}">Ouvrir dans le dashboard</button>` : ""}${folderSelect("doc", d.id, (state.settings.docFolders || {})[d.id])}<button class="btn sm" data-act="doc-dl" data-id="${d.id}">Télécharger</button><button class="btn sm danger" data-act="doc-del" data-id="${d.id}">Supprimer</button></div></div>`; }).join("") : (canStore ? `<div class="empty">Aucun document pour l'instant.</div>` : "")}</div>
     </section>
-    <section class="panel c12"><div class="ph"><h2>Matchs enregistrés</h2><span class="sub">${matches.length} match${matches.length>1?"s":""}</span></div>
+    <section class="panel c12"><div class="ph"><h2>Matchs enregistrés</h2><span class="sub">${matches.length} match${matches.length>1?"s":""}${state.folder ? " dans ce dossier" : ""}</span><button class="btn sm" data-act="combo-edit" style="margin-left:auto">⊕ Combiner les données</button></div>
+      ${canStore ? "" : folderBarHTML()}
       ${matches.length ? `<div class="tscroll"><table class="t"><thead><tr><th>Match</th><th>Date</th><th>Source</th><th style="text-align:right">Score</th><th></th></tr></thead><tbody>${matches.map(mm => { const st = teamStats(mm);
         return `<tr><td><span class="pill them" style="--opp:${themCol(mm)};--opp-ink:${inkOn(themCol(mm))}">${esc(mm.opponent || "?")}</span> ${esc(mm.title)}</td><td>${esc(mm.date || "–")}</td><td>${esc(mm.source ? mm.source.format : "Saisie")}</td><td class="n">${st.us.goals}–${st.them.goals}</td>
-        <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-act="open-match" data-id="${mm.id}">Ouvrir</button> <button class="btn sm" data-act="export-json" data-id="${mm.id}">Exporter</button> <button class="btn sm danger" data-act="del-match" data-id="${mm.id}">Supprimer</button></td></tr>`; }).join("")}</tbody></table></div>`
+        <td style="text-align:right;white-space:nowrap">${folderSelect("match", mm.id, mm.folder)} <button class="btn sm" data-act="open-match" data-id="${mm.id}">Ouvrir</button> <button class="btn sm" data-act="export-json" data-id="${mm.id}">Exporter</button> <button class="btn sm danger" data-act="del-match" data-id="${mm.id}">Supprimer</button></td></tr>`; }).join("")}</tbody></table></div>`
         : `<div class="empty">Aucun match enregistré. Importe un fichier ou crée un match vide pour saisir à la main.</div>`}
       <div class="toolbar" style="margin-top:12px"><button class="btn primary" data-act="import">Importer un match</button><button class="btn" data-act="new-match">Créer un match vide</button>
         ${S.assets ? `<button class="btn" data-act="club-logo">${state.settings.clubLogo ? ("Changer le logo " + TN()) : ("Ajouter le logo " + TN())}</button>` : ""}</div>
@@ -1641,7 +1713,7 @@ function render(){
     <nav class="tabs" role="tablist">${[["collectif","Collectif"],["indiv","Indiv"],["codage","Codage"],["docs","Stockage"]].map(([k,l]) => `<button role="tab" data-act="view" data-v="${k}" aria-selected="${state.view===k}">${l}</button>`).join("")}</nav>
     <div class="spacer"></div>
     <label class="sr" for="match-select" hidden>Match</label>
-    <select id="match-select" data-act="select-match" aria-label="Match affiché">${list.map(x => `<option value="${x.id}" ${x.id===m.id?"selected":""}>${esc(x.title)}</option>`).join("")}</select>
+    <select id="match-select" data-act="select-match" aria-label="Match affiché">${m.combo ? `<option value="__combo" selected>⊕ Données combinées (${m.srcIds.length} matchs)</option>` : ""}${list.filter(x => !x.combo).map(x => `<option value="${x.id}" ${x.id===m.id?"selected":""}>${esc(x.title)}</option>`).join("")}<option value="__combo_new">⊕ Combiner les données…</option></select>
     <button class="btn ghost-dark" data-act="import">Importer</button>
     <button class="btn ghost-dark" data-act="settings" aria-label="Paramètres" title="Paramètres">⚙ Paramètres</button>
     ${state.view !== "docs" ? `<button class="btn primary" data-act="pdf">PDF une page</button>` : ""}
@@ -1752,6 +1824,15 @@ document.addEventListener("click", async (evt) => {
     case "period": state.period = t.dataset.k; render(); break;
     case "player": state.player = t.dataset.p; render(); break;
     case "scope": state.scope = t.dataset.v; render(); break;
+    case "combo-edit": openComboModal(); break;
+    case "combo-off": state.combo = null; comboCache = null; render(); break;
+    case "folder": state.folder = t.dataset.v; render(); break;
+    case "folder-new": folderAsk("Nouveau dossier", "", async v => { if (folderList().includes(v)){ toast("Ce dossier existe déjà."); return; } state.settings = {...state.settings, folders:[...folderList(), v]}; state.folder = v; render(); await saveSettings(); }); break;
+    case "folder-ren": { const old = state.folder; folderAsk("Renommer le dossier", old, async v => { state.settings = {...state.settings, folders: folderList().map(f => f === old ? v : f), docFolders: Object.fromEntries(Object.entries(state.settings.docFolders || {}).map(([k, f]) => [k, f === old ? v : f]))};
+      [...state.matches.values()].filter(m => m.folder === old).forEach(m => { m.folder = v; persist(m); }); state.folder = v; render(); await saveSettings(); }); break; }
+    case "folder-del": { const old = state.folder; confirmBox(`Supprimer le dossier « ${esc(old)} » ? Les matchs et fichiers qu'il contient ne sont pas supprimés : ils passent dans « Sans dossier ».`, "Supprimer le dossier", async () => {
+      state.settings = {...state.settings, folders: folderList().filter(f => f !== old), docFolders: Object.fromEntries(Object.entries(state.settings.docFolders || {}).filter(([, f]) => f !== old))};
+      [...state.matches.values()].filter(m => m.folder === old).forEach(m => { m.folder = ""; persist(m); }); state.folder = ""; render(); await saveSettings(); }); break; }
     case "half": state.half = Number(t.dataset.v) || 0; render(); break;
     case "photo": pickImage(async (file) => { const up = await uploadImage(file); if (!up) return; await S.db.collection("players").doc(slug(state.player)).set({name:state.player, photo:up.id}); toast("Photo enregistrée."); }); break;
     case "club-logo": pickImage(async (file) => { const up = await uploadImage(file); if (!up) return; await S.db.doc("settings/app").set({...state.settings, clubLogo:up.id}); toast("Logo enregistré."); }); break;
@@ -1770,7 +1851,12 @@ document.addEventListener("contextmenu", (evt) => {
 });
 document.addEventListener("change", (evt) => {
   const t = evt.target;
-  if (t.id === "match-select"){ state.currentId = t.value; state.shotEdit = false; state.shotSel = null; lsWrite(); render(); }
+  if (t.dataset && t.dataset.act === "folder-move"){ const id = t.dataset.id, v = t.value;
+    if (t.dataset.kind === "match"){ const mm = state.matches.get(id); if (mm){ mm.folder = v; persist(mm); } }
+    else { state.settings = {...state.settings, docFolders: {...(state.settings.docFolders || {}), [id]: v}}; saveSettings(); }
+    toast(v ? `Rangé dans « ${v} ».` : "Retiré du dossier.", 1200); render(); return; }
+  if (t.id === "match-select" && t.value.startsWith("__combo")){ if (t.value === "__combo_new") openComboModal(); else render(); return; }
+  if (t.id === "match-select"){ state.combo = null; state.currentId = t.value; state.shotEdit = false; state.shotSel = null; lsWrite(); render(); }
   if (t.dataset && t.dataset.act === "draft-ev"){
     state.draft.ev = t.value;
     const ev = t.value && current().events.find(e => e.id === t.value);
@@ -2633,7 +2719,7 @@ setInterval(() => {
   const tl = $("#cw-tl"); if (tl && !state.tlDrag && (state.tlTick = (state.tlTick || 0) + 1) % 2 === 0){ const sl = tl.scrollLeft, st = tl.scrollTop; tl.innerHTML = timelineHTML(m); tl.scrollLeft = sl; tl.scrollTop = st; tlFollow(); }
 }, 500);
 // Lecteur vidéo : coder en regardant le match. La vidéo pilote le chrono (temps timeline = calage vidéo inversé)
-var VP = {url:null, name:"", el:null};
+var VP = {url:null, name:"", el:null, panel:null, win:null};
 function vpOn(){ return !!(VP && VP.el && VP.url && state.vpLink !== false); }
 function vpToT(m, vt){ const v = m.video || {}, k2 = k2At(liveClock(m));
   if (v.v2 != null && k2 != null && vt >= v.v2) return k2 + (vt - v.v2);
@@ -2646,9 +2732,9 @@ function vpClock(m, c, a){ if (!vpOn()) return; const el = VP.el, vt = el.curren
   else if (a === "resume") el.play();
   else if (/^[+-]\d+$/.test(a)) el.currentTime = Math.max(0, vt + Number(a));
 }
-function vpBuild(){ if (VP.el) return document.getElementById("vp");
+function vpBuild(){ if (VP.el) return VP.panel;
   const d = document.createElement("div"); d.id = "vp"; d.className = "vp"; d.hidden = true;
-  d.innerHTML = `<div class="vp-bar"><b>🎬 Vidéo</b><span class="vp-name"></span><button type="button" data-vp="min" title="Réduire / agrandir">–</button><button type="button" data-vp="close" title="Fermer (la vidéo reste chargée)">✕</button></div>
+  d.innerHTML = `<div class="vp-bar"><b>🎬 Vidéo</b><span class="vp-name"></span><button type="button" data-vp="detach" title="Sortir la vidéo dans une fenêtre à part (2e écran)">⧉ Détacher</button><button type="button" data-vp="min" title="Réduire / agrandir">–</button><button type="button" data-vp="close" title="Fermer (la vidéo reste chargée)">✕</button></div>
   <div class="vp-body"><div class="vp-empty"><button type="button" class="btn primary" data-vp="open">Ouvrir la vidéo du match…</button><p>Formats : MP4 (H.264) conseillé, WebM, MOV/M4V (H.264).<br>MKV, AVI ou HEVC : convertir d'abord en MP4 (ex. HandBrake).</p></div>
   <video playsinline preload="auto" hidden></video>
   <input type="range" class="vp-seek" min="0" max="1000" value="0" hidden aria-label="Position dans la vidéo">
@@ -2656,7 +2742,7 @@ function vpBuild(){ if (VP.el) return document.getElementById("vp");
   <select data-vp="rate" aria-label="Vitesse">${[0.25,0.5,0.75,1,1.5,2,4].map(r => `<option value="${r}" ${r === 1 ? "selected" : ""}>×${r}</option>`).join("")}</select><span class="vp-t">00:00</span>
   <button type="button" data-vp="k1" title="Cale le coup d'envoi 1re MT sur l'image affichée">Coup d'envoi ici</button><label style="display:inline-flex;gap:3px;align-items:center"><input type="checkbox" data-vp="link" checked> Lier au chrono</label><button type="button" data-vp="open">Changer…</button></div></div>
   <input type="file" accept="video/*,.mp4,.m4v,.mov,.webm" hidden>`;
-  document.body.appendChild(d); const v = d.querySelector("video"), f = d.querySelector("input[type=file]"), sk = d.querySelector(".vp-seek"); VP.el = v;
+  document.body.appendChild(d); VP.panel = d; const v = d.querySelector("video"), f = d.querySelector("input[type=file]"), sk = d.querySelector(".vp-seek"); VP.el = v;
   f.addEventListener("change", () => { const file = f.files && f.files[0]; if (!file) return; if (VP.url) URL.revokeObjectURL(VP.url); VP.url = URL.createObjectURL(file); VP.name = file.name; v.src = VP.url; f.value = ""; vpSync(); });
   v.addEventListener("error", () => { if (!VP.url) return; toast("Format vidéo non lu par l'appli. Convertis en MP4 (H.264) puis réessaie.", 6000); URL.revokeObjectURL(VP.url); VP.url = null; vpSync(); });
   v.addEventListener("loadedmetadata", () => { const m = current(); toast(`Vidéo chargée : ${VP.name}`, 1500); vpSync(); if (m.video && m.video.v1 != null) v.currentTime = m.video.v1; });
@@ -2665,20 +2751,38 @@ function vpBuild(){ if (VP.el) return document.getElementById("vp");
   v.addEventListener("timeupdate", () => { d.querySelector(".vp-t").textContent = mmss(v.currentTime) + " / " + mmss(v.duration || 0); if (!sk.matches(":active")) sk.value = v.duration ? Math.round(v.currentTime / v.duration * 1000) : 0; });
   sk.addEventListener("input", () => { if (v.duration) v.currentTime = sk.value / 1000 * v.duration; });
   d.addEventListener("click", e => { const b = e.target.closest("[data-vp]"); if (!b || b.tagName === "SELECT" || b.tagName === "INPUT") return; const k = b.dataset.vp, m = current();
-    if (k === "open") f.click(); else if (k === "close"){ state.vpOpen = false; v.pause(); vpSync(); render(); } else if (k === "min") d.classList.toggle("min");
+    if (k === "open") f.click(); else if (k === "detach") VP.win ? vpAttach() : vpDetach(); else if (k === "close"){ if (VP.win) vpAttach(); state.vpOpen = false; v.pause(); vpSync(); render(); } else if (k === "min") d.classList.toggle("min");
     else if (k === "play") v.paused ? v.play() : v.pause();
     else if (k === "k1"){ m.video = {...(m.video || {}), v1: v.currentTime}; persist(m); toast(`Coup d'envoi 1re MT calé à ${mmss(v.currentTime)} dans la vidéo.`, 2000); render(); }
     else if (/^[+-][\d.]+$/.test(k)){ v.pause(); v.currentTime = Math.max(0, v.currentTime + Number(k)); } });
   d.addEventListener("change", e => { const k = e.target.dataset.vp; if (k === "rate") v.playbackRate = Number(e.target.value); else if (k === "link"){ state.vpLink = e.target.checked; render(); } });
-  const bar = d.querySelector(".vp-bar"); bar.addEventListener("pointerdown", e => { if (e.target.closest("button")) return; const r = d.getBoundingClientRect(), x0 = e.clientX - r.left, y0 = e.clientY - r.top;
+  const bar = d.querySelector(".vp-bar"); bar.addEventListener("pointerdown", e => { if (e.target.closest("button") || d.classList.contains("vp-out")) return; const r = d.getBoundingClientRect(), x0 = e.clientX - r.left, y0 = e.clientY - r.top;
     const mv = ev => { d.style.left = Math.max(0, Math.min(innerWidth - 80, ev.clientX - x0)) + "px"; d.style.top = Math.max(0, Math.min(innerHeight - 30, ev.clientY - y0)) + "px"; d.style.right = d.style.bottom = "auto"; };
     const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); }; addEventListener("pointermove", mv); addEventListener("pointerup", up); });
   return d; }
 function vpSync(){ if (!state.vpOpen && !VP.el) return; const d = vpBuild(), has = !!VP.url;
-  d.hidden = !(state.vpOpen && state.view === "codage");
+  d.hidden = VP.win ? false : !(state.vpOpen && state.view === "codage");
   d.querySelector(".vp-empty").hidden = has; ["video", ".vp-ctl", ".vp-seek"].forEach(q => d.querySelector(q).hidden = !has);
   d.querySelector(".vp-name").textContent = VP.name || ""; d.querySelector("[data-vp=link]").checked = state.vpLink !== false;
   if (d.hidden && VP.el && !VP.el.paused) VP.el.pause(); }
+// Vidéo sur un 2e écran : le panneau (même élément <video>, mêmes réglages) passe dans une fenêtre séparée, puis revient à sa fermeture
+async function vpDetach(){ const d = VP.panel, v = VP.el, t = v.currentTime, playing = !v.paused; let w = null;
+  try { w = window.open("", "analyse-video", "popup,width=960,height=600"); } catch {}
+  if (!w){ try { if (window.documentPictureInPicture) w = await documentPictureInPicture.requestWindow({width: 960, height: 600}); } catch {} }
+  if (!w || !w.document){ if (v.requestPictureInPicture && VP.url){ try { await v.requestPictureInPicture(); toast("Vidéo en image dans l'image : fais-la glisser sur ton 2e écran.", 3500); return; } catch {} } toast("Ta version ne permet pas d'ouvrir une 2e fenêtre ici.", 3500); return; }
+  const doc = w.document; doc.title = "Vidéo · " + (VP.name || "match");
+  document.querySelectorAll("style, link[rel=stylesheet]").forEach(n => doc.head.appendChild(n.cloneNode(true)));
+  doc.documentElement.setAttribute("data-theme", document.documentElement.getAttribute("data-theme") || ""); doc.documentElement.style.cssText = document.documentElement.style.cssText;
+  doc.body.style.cssText = "margin:0;background:#000;height:100vh;display:flex"; doc.body.appendChild(doc.adoptNode(d));
+  d.classList.add("vp-out"); d.classList.remove("min"); d.style.left = d.style.top = d.style.right = d.style.bottom = ""; VP.win = w;
+  d.querySelector('[data-vp="detach"]').textContent = "⇲ Rattacher"; d.hidden = false;
+  doc.addEventListener("keydown", e => { if (e.target.closest && e.target.closest("input,select,textarea")) return; document.body.dispatchEvent(new KeyboardEvent("keydown", {key: e.key, code: e.code, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, bubbles: true})); });
+  w.addEventListener("pagehide", () => { if (VP.win === w) vpAttach(true); });
+  v.currentTime = t; if (playing) setTimeout(() => v.play().catch(() => {}), 150);
+  toast("Vidéo détachée : place la fenêtre sur ton 2e écran. Les raccourcis de codage marchent aussi depuis cette fenêtre.", 4000); }
+function vpAttach(closed){ const d = VP.panel, v = VP.el, w = VP.win; if (!w) return; const t = v.currentTime, playing = !v.paused; VP.win = null;
+  document.body.appendChild(document.adoptNode(d)); d.classList.remove("vp-out"); d.querySelector('[data-vp="detach"]').textContent = "⧉ Détacher";
+  v.currentTime = t; if (playing) setTimeout(() => v.play().catch(() => {}), 150); if (!closed){ try { w.close(); } catch {} } vpSync(); }
 // Export LongoMatch : le nom de l'action = le code seul (une ligne par code) ; les descripteurs vont seulement dans la remarque (LongoMatch les colle sinon au nom)
 // Calage vidéo : temps du coup d'envoi de chaque MT dans la vidéo source ; la pause de mi-temps est « gelée » dans l'appli
 function vidT(m, t){
