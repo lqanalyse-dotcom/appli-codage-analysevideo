@@ -266,6 +266,7 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .combo-row{display:flex;gap:10px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--line,rgba(127,127,127,.15));cursor:pointer;font-size:13px}.combo-row:hover{background:rgba(127,127,127,.08)}
 .folder-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px}
 select.f.sm{padding:3px 6px;font-size:12px}
+.tl-ren{margin-left:4px;opacity:0;cursor:pointer;padding:0 3px;border-radius:4px}.tl-name:hover .tl-ren,.tl-ren:focus{opacity:.8}.tl-ren:hover{opacity:1;background:rgba(127,127,127,.2)}
 .vp{position:fixed;right:16px;bottom:16px;z-index:60;width:560px;min-width:300px;max-width:96vw;background:#0d1626;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.45);resize:both;overflow:hidden;display:flex;flex-direction:column}
 .vp[hidden]{display:none}
 .vp.vp-out{position:static;width:100%;height:100vh;max-width:none;border:0;border-radius:0;resize:none}.vp.vp-out .vp-bar{cursor:default}
@@ -2379,7 +2380,7 @@ function timelineHTML(m){
   let axis = ""; for (let x = 0; x <= span; x += step) axis += `<b style="left:${190 + x*sc}px"></b><span style="left:${190 + x*sc}px">${Math.round(x/60)}'</span>`;
   const rows = names.map(n => {
     const evs = live.filter(e => tlKey(e) === n); const bg = btnOf(evs[0]).bg || "#666";
-    return `<div class="tl-row"><div class="tl-name" role="button" tabindex="0" data-act="tl-row" data-k="${esc(n)}" title="Sélectionner toutes les séquences de ${esc(n)} (puis TAB pour passer à la suivante)"><i style="background:${bg}"></i>${esc(n)} <span class="hint">${evs.length}</span></div><div class="tl-track" style="width:${width}px">${evs.map(e => {
+    return `<div class="tl-row"><div class="tl-name" role="button" tabindex="0" data-act="tl-row" data-k="${esc(n)}" title="Sélectionner toutes les séquences de ${esc(n)} (puis TAB pour passer à la suivante)"><i style="background:${bg}"></i>${esc(n)} <span class="hint">${evs.length}</span><span class="tl-ren" role="button" data-act="tl-ren" data-k="${esc(n)}" title="Renommer cette ligne">✎</span></div><div class="tl-track" style="width:${width}px">${evs.map(e => {
       const end = e.e ?? now; const lbl = (e.l || []).filter(x => !/^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/.test(x.g)).map(x => x.t).join(", ");
       return `<button type="button" class="tl-bar ${e.e == null ? "act" : ""} ${state.cwSel === e.id || (state.tlSel || []).includes(e.id) ? "sel" : ""}" data-act="cw-sel" data-id="${e.id}" style="left:${e.t*sc}px;width:${Math.max(3,(end - e.t)*sc)}px;background-color:${bg}" title="${esc(n)} · ${mmss(e.t)}–${mmss(end)}${lbl ? " · " + esc(lbl) : ""}"></button>`; }).join("")}</div></div>`; }).join("");
   return `<div class="tl-content" style="width:${190 + width}px"><div class="tl-axis">${axis}</div>${rows || `<div class="empty" style="margin:12px;position:sticky;left:12px;max-width:520px">La timeline se remplit dès que tu appuies sur un bouton.</div>`}${tlMarkers(m, sc)}<div class="tl-head" id="tl-head" style="left:${190 + now*sc}px" title="Glisse le curseur pour le déplacer"><span class="tl-knob"></span></div></div>`;
@@ -2412,6 +2413,15 @@ function tlMerge(m, ids){ let n = 0; const gone = new Map();
   m.events = m.events.filter(e => !gone.has(e.id)); m.events.forEach(e => { if (gone.has(e.lk)) e.lk = gone.get(e.lk); });
   m.shots.forEach(sh => { if (gone.has(sh.ev)) sh.ev = gone.get(sh.ev); });
   state.tlSel = (state.tlSel || []).filter(id => !gone.has(id)); if (gone.has(state.cwSel)) state.cwSel = gone.get(state.cwSel); return n; }
+// Renommer une ligne après le codage : code collectif → nom de la séquence ; ligne indiv « joueur · action » → l'action
+function tlRename(m, key){ const evs = m.events.filter(e => tlKey(e) === key); if (!evs.length) return; const e0 = evs[0], ind = e0.w === "i" && key !== e0.n;
+  const old = ind ? key.slice(e0.n.length + 3) : e0.n;
+  const bg = modal(`<h3>Renommer la ligne</h3><p class="hint">${evs.length} séquence${evs.length > 1 ? "s" : ""} · ${ind ? "action du joueur " + esc(e0.n) : "code"}</p><input type="text" class="f" id="tr-name" value="${esc(old)}" style="width:100%"><div class="actions"><button class="btn" data-x="no">Annuler</button><button class="btn primary" data-x="ok">Renommer</button></div>`);
+  const inp = bg.querySelector("#tr-name"); inp.focus(); inp.select();
+  const ok = () => { const v = inp.value.trim(); if (!v || v === old){ bg.remove(); return; }
+    evs.forEach(e => { if (ind){ const l = (e.l || []).find(x => x.t === old && !SEQ_CTX.test(x.g)); if (l) l.t = v; } else e.n = v; });
+    persist(m); bg.remove(); render(); toast(`Ligne renommée : ${v}`, 1500); };
+  bg.querySelector('[data-x="no"]').onclick = () => bg.remove(); bg.querySelector('[data-x="ok"]').onclick = ok; inp.addEventListener("keydown", e => { if (e.key === "Enter") ok(); }); }
 function tlSelIds(m){ const ids = new Set(state.tlSel || []); if (state.cwSel) ids.add(state.cwSel); return [...ids].filter(id => m.events.some(e => e.id === id)); }
 function tlShift(m, ids, d){
   const set = new Set(ids); m.events.forEach(e => { if (e.lk && set.has(e.lk)) set.add(e.id); });
@@ -2894,6 +2904,7 @@ document.addEventListener("click", async (evt) => {
     tlSelect(t.dataset.id, evt.shiftKey || evt.ctrlKey || evt.metaKey); }
   else if (a === "tl-merge"){ const n = tlMerge(m, tlSelIds(m)); persist(m); render(); toast(n ? `${n} chevauchement${n > 1 ? "s" : ""} fusionné${n > 1 ? "s" : ""}.` : "Aucun chevauchement.", 1800); }
   else if (a === "tl-shift"){ const d = Number(($("#tl-shift-s") || {}).value) || 0; if (!d){ toast("Indique un nombre de secondes."); return; } tlShift(m, tlSelIds(m), d*Number(t.dataset.dir)); persist(m); render(); }
+  else if (a === "tl-ren"){ evt.stopPropagation(); tlRename(m, t.dataset.k); }
   else if (a === "tl-row"){ const ids = m.events.filter(e => e.live && inWin(e) && tlKey(e) === t.dataset.k).sort((x,y) => x.t - y.t).map(e => e.id); if (!ids.length) return;
     state.tlSel = ids; state.cwSel = ids[0]; tlMoveTo(m, pressTime(m.events.find(e => e.id === ids[0])), true); persist(m); render(); toast(`${ids.length} séquence${ids.length > 1 ? "s" : ""} sélectionnée${ids.length > 1 ? "s" : ""} · TAB = suivante, Maj+TAB = précédente`, 2500); }
   else if (a === "cw-float"){ state.cwFloat = t.dataset.v; render(); }
