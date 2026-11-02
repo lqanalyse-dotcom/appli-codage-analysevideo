@@ -1084,6 +1084,7 @@ function lsWrite(){
 const saveTimers = {};
 function persist(m){
   if (m.combo){ toast("Données combinées : lecture seule. Ouvre un match pour le modifier.", 2500); return; }
+  if (!(UNDO.get(m.id) || {}).skip) undoTrack(m);
   m.updatedAt = Date.now();
   if (m.sample) return;
   if (S.mode === "local"){ lsWrite(); return; }
@@ -1697,7 +1698,7 @@ function openSettings(){
   bg.querySelector('[data-x="ok"]').onclick = () => { const o = read(), n = {...t, mode:o.mode, teamName:o.teamName.trim(), teamShort:o.teamShort.trim(), pdfMain:o.pdfMain, pdfAcc:o.pdfAcc, pdfBg:o.pdfBg}; ["bg","navy","pau","dataUs","dataThem"].forEach(k => { if (touched.has(k)) n[k] = o[k]; }); if (pal && !touched.has("dataUs")) n.dataUs = pal[1]; if (pal && !touched.has("dataThem")) n.dataThem = pal[2]; save(n); };
 }
 function render(){
-  applyTheme();
+  applyTheme(); try { undoInit(current()); } catch {}
   const app = $("#app");
   const m = current();
   const st = teamStats(m);
@@ -2319,12 +2320,19 @@ function cwPressInner(i){
   const flashIds = new Set(created.map(id => m.events.find(e => e.id === id)?.bi)); flashIds.add(i);
   flashIds.forEach(bi => { const el = document.querySelector(`.cw-b[data-cw="${bi}"]`); if (el){ el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 350); } });
 }
-function cwUndo(){
-  const m = current(); const u = (state.cwUndo || []).pop(); if (!u){ toast("Rien à annuler.", 1500); return; }
-  m.events = m.events.filter(e => !u.created.includes(e.id));
-  m.events.forEach(e => { if (u.closed.includes(e.id)) e.e = null; });
-  persist(m); render(); toast("Dernière action annulée.", 1500);
-}
+// Annuler / rétablir : instantané (séquences, tirs, corners) avant chaque modification enregistrée, par match
+const UNDO = new Map();
+const undoSnap = m => JSON.stringify({events: m.events, shots: m.shots, corners: m.corners || []});
+function undoInit(m){ if (m && !m.combo && !UNDO.has(m.id)) UNDO.set(m.id, {last: undoSnap(m), stack: [], redo: []}); }
+function undoTrack(m){ undoInit(m); const r = UNDO.get(m.id), now = undoSnap(m); if (now === r.last) return; r.stack.push(r.last); if (r.stack.length > 60) r.stack.shift(); r.redo = []; r.last = now; }
+function undoApply(m, snap){ const o = JSON.parse(snap); m.events = o.events; m.shots = o.shots; m.corners = o.corners; const r = UNDO.get(m.id); r.last = snap; r.skip = true; persist(m); r.skip = false;
+  state.tlSel = (state.tlSel || []).filter(id => m.events.some(e => e.id === id)); if (state.cwSel && !m.events.some(e => e.id === state.cwSel)) state.cwSel = null; render(); }
+function cwUndo(){ const m = current(); if (m.combo) return; undoInit(m); const r = UNDO.get(m.id);
+  if (!r.stack.length){ toast("Rien à annuler.", 1500); return; } r.redo.push(r.last); undoApply(m, r.stack.pop()); toast("Action annulée (Ctrl+Y pour rétablir).", 1500); }
+function cwRedo(){ const m = current(); if (m.combo) return; undoInit(m); const r = UNDO.get(m.id);
+  if (!r.redo.length){ toast("Rien à rétablir.", 1500); return; } r.stack.push(r.last); undoApply(m, r.redo.pop()); toast("Action rétablie.", 1500); }
+document.addEventListener("keydown", (evt) => { if (state.view === "codage" || !(evt.ctrlKey || evt.metaKey) || document.querySelector(".modal-bg") || (evt.target.closest && evt.target.closest("input,textarea,select"))) return;
+  const k = evt.key.toLowerCase(); if (k === "z" && !evt.shiftKey){ evt.preventDefault(); cwUndo(); } else if (k === "y" || (k === "z" && evt.shiftKey)){ evt.preventDefault(); cwRedo(); } });
 function cwClockAct(a){
   try { cwClockInner(a); } catch (err){ console.error(err); toast("Action impossible : " + (err && err.message || err), 5000); }
 }
@@ -2419,9 +2427,13 @@ function tlRename(m, key){ const evs = m.events.filter(e => tlKey(e) === key); i
   const bg = modal(`<h3>Renommer la ligne</h3><p class="hint">${evs.length} séquence${evs.length > 1 ? "s" : ""} · ${ind ? "action du joueur " + esc(e0.n) : "code"}</p><input type="text" class="f" id="tr-name" value="${esc(old)}" style="width:100%"><div class="actions"><button class="btn" data-x="no">Annuler</button><button class="btn primary" data-x="ok">Renommer</button></div>`);
   const inp = bg.querySelector("#tr-name"); inp.focus(); inp.select();
   const ok = () => { const v = inp.value.trim(); if (!v || v === old){ bg.remove(); return; }
+    const newKey = ind ? e0.n + " · " + v : v;
+    if (!bg.dataset.warned && m.events.some(e => tlKey(e) === newKey)){ bg.dataset.warned = 1; bg.querySelector(".hint").innerHTML = `<b style="color:var(--danger,#c0392b)">⚠ Une ligne « ${esc(newKey)} » existe déjà : les deux lignes seront regroupées. Clique encore sur Renommer pour confirmer.</b>`; return; }
     evs.forEach(e => { if (ind){ const l = (e.l || []).find(x => x.t === old && !SEQ_CTX.test(x.g)); if (l) l.t = v; } else e.n = v; });
     persist(m); bg.remove(); render(); toast(`Ligne renommée : ${v}`, 1500); };
   bg.querySelector('[data-x="no"]').onclick = () => bg.remove(); bg.querySelector('[data-x="ok"]').onclick = ok; inp.addEventListener("keydown", e => { if (e.key === "Enter") ok(); }); }
+// Rétablir les noms d'origine : chaque séquence codée garde l'index de son bouton (bi), on lui redonne le nom de ce bouton
+function tlRestoreNames(m){ let n = 0; m.events.forEach(e => { if (!e.live || e.bi == null) return; const b = btnOf(e); if (b.n && b.n !== e.n){ e.n = b.n; n++; } }); return n; }
 function tlSelIds(m){ const ids = new Set(state.tlSel || []); if (state.cwSel) ids.add(state.cwSel); return [...ids].filter(id => m.events.some(e => e.id === id)); }
 function tlShift(m, ids, d){
   const set = new Set(ids); m.events.forEach(e => { if (e.lk && set.has(e.lk)) set.add(e.id); });
@@ -2611,7 +2623,7 @@ function renderCodage(m){
         <label class="hint" for="cw-half">Mi-temps</label><select class="f" id="cw-half" data-act="cw-half">${[45,40,35,30].map(v => `<option value="${v}" ${c.halfLen===v?"selected":""}>${v} min</option>`).join("")}</select>
       </div>
       <div class="spacer" style="flex:1"></div>
-      <div class="toolbar"><button class="btn" data-act="cw-stopall" title="Touche TAB">Tout couper (TAB)</button><button class="btn" data-act="cw-undo" title="Ctrl+Z">Annuler la dernière action</button><button class="btn" data-act="cw-vp" aria-pressed="${!!state.vpOpen}">🎬 Vidéo du match</button><button class="btn" data-act="cw-video" aria-pressed="${!!state.cwVideo}">Calage vidéo</button><select class="f" id="cw-xmlhalf" aria-label="Partie du match à exporter"><option value="0" ${!state.xmlHalf ? "selected" : ""}>Export : match entier</option><option value="1" ${state.xmlHalf === 1 ? "selected" : ""}>Export : mi-temps 1</option><option value="2" ${state.xmlHalf === 2 ? "selected" : ""}>Export : mi-temps 2</option></select><label class="hint" style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="cw-xmlnum" ${state.xmlNum !== false ? "checked" : ""}> Titres courts</label><button class="btn" data-act="cw-xml">Exporter XML Sportscode</button><button class="btn" data-act="cw-xml" data-fmt="lm" title="Une ligne par code, labels en étiquettes">Exporter XML LongoMatch</button></div>
+      <div class="toolbar"><button class="btn" data-act="cw-stopall" title="Touche TAB">Tout couper (TAB)</button><button class="btn" data-act="cw-undo" title="Ctrl+Z">↶ Annuler</button><button class="btn" data-act="cw-redo" title="Ctrl+Y">↷ Rétablir</button><button class="btn" data-act="tl-restore" title="Redonne à chaque séquence le nom du bouton qui l'a créée (sépare des lignes regroupées par un renommage)">Noms d'origine des lignes</button><button class="btn" data-act="cw-vp" aria-pressed="${!!state.vpOpen}">🎬 Vidéo du match</button><button class="btn" data-act="cw-video" aria-pressed="${!!state.cwVideo}">Calage vidéo</button><select class="f" id="cw-xmlhalf" aria-label="Partie du match à exporter"><option value="0" ${!state.xmlHalf ? "selected" : ""}>Export : match entier</option><option value="1" ${state.xmlHalf === 1 ? "selected" : ""}>Export : mi-temps 1</option><option value="2" ${state.xmlHalf === 2 ? "selected" : ""}>Export : mi-temps 2</option></select><label class="hint" style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="cw-xmlnum" ${state.xmlNum !== false ? "checked" : ""}> Titres courts</label><button class="btn" data-act="cw-xml">Exporter XML Sportscode</button><button class="btn" data-act="cw-xml" data-fmt="lm" title="Une ligne par code, labels en étiquettes">Exporter XML LongoMatch</button></div>
     </div>
     ${state.cwVideo ? `<div class="cw-video"><b>Calage sur ta vidéo</b><label class="hint" for="cw-v1">Coup d'envoi 1re MT à</label><input type="text" id="cw-v1" placeholder="15:00" value="${m.video && m.video.v1 != null ? mmss(m.video.v1) : ""}" style="width:80px"><label class="hint" for="cw-v2">Coup d'envoi 2e MT à</label><input type="text" id="cw-v2" placeholder="75:30" value="${m.video && m.video.v2 != null ? mmss(m.video.v2) : ""}" style="width:80px"><span class="hint">(temps dans la vidéo source, mm:ss). Les exports XML sont recalés : la 1re MT part du 1er temps, la 2e MT du 2e, la pause de mi-temps est sautée.</span></div>` : ""}
     <div class="cw-ctx" style="margin-top:10px">${ctx.map(([g,v]) => `<span class="pill">${esc(g)} : ${esc(v)}</span>`).join("")}<button class="btn sm" data-act="edit-match">Modifier</button>
@@ -2875,6 +2887,8 @@ document.addEventListener("click", async (evt) => {
   const a = t.dataset.act, m = current();
   if (a === "cw-clock") cwClockAct(t.dataset.a);
   else if (a === "cw-undo") cwUndo();
+  else if (a === "cw-redo") cwRedo();
+  else if (a === "tl-restore") confirmBox("Redonner à toutes les séquences le nom du bouton qui les a créées ? Les lignes renommées reprennent leur nom d'origine (annulable avec Ctrl+Z).", "Rétablir les noms", () => { const n = tlRestoreNames(m); persist(m); render(); toast(n ? `${n} séquence${n > 1 ? "s" : ""} remise${n > 1 ? "s" : ""} sous leur nom d'origine.` : "Toutes les séquences ont déjà leur nom d'origine.", 2500); });
   else if (a === "cw-stopall") cwStopAll();
   else if (a === "cw-links"){ state.cwLinks = !state.cwLinks; render(); }
   else if (a === "cw-shotf"){ state.cwShot = {...(state.cwShot && state.cwShot.id === t.dataset.id ? state.cwShot : {}), id:t.dataset.id, [t.dataset.f]:t.dataset.v}; render(); }
@@ -2969,7 +2983,8 @@ document.addEventListener("keydown", (evt) => {
   if (VP && VP.url && VP.el && !evt.ctrlKey && !evt.metaKey && !evt.altKey && vpKey(evt)) return;
   if ((evt.key === "ArrowLeft" || evt.key === "ArrowRight") && tlSelIds(current()).length){ evt.preventDefault(); const m = current(); tlShift(m, tlSelIds(m), (evt.key === "ArrowLeft" ? -1 : 1)*(evt.shiftKey ? 5 : 1)); persist(m); render(); return; }
   if (evt.key === "Escape" && tlSelIds(current()).length){ state.tlSel = []; state.cwSel = null; render(); return; }
-  if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "z"){ evt.preventDefault(); cwUndo(); return; }
+  if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "z" && !evt.shiftKey){ evt.preventDefault(); cwUndo(); return; }
+  if ((evt.ctrlKey || evt.metaKey) && (evt.key.toLowerCase() === "y" || (evt.key.toLowerCase() === "z" && evt.shiftKey))){ evt.preventDefault(); cwRedo(); return; }
   if (evt.key === "Tab"){ evt.preventDefault(); const m = current(); const ids = tlSelIds(m); if (ids.length > 1){ tlStep(m, evt.shiftKey ? -1 : 1); return; } cwStopAll(); return; }
   if (evt.ctrlKey || evt.metaKey || evt.altKey || evt.key.length !== 1) return;
   const b = CWB.find(b => b.k === evt.key && !b.r && b.t !== 2);
