@@ -2398,6 +2398,20 @@ function tlStep(m, dir){
   cwBanner(m, null, [], [], [], `Séquence ${i + 1} / ${evs.length} · ${e.n} à ${clockLabel(m, pressTime(e))}`);
   const bar = document.querySelector(`#cw-tl .tl-bar[data-id="${e.id}"]`); if (bar) bar.scrollIntoView({block:"nearest", inline:"center"});
 }
+// Fusion optionnelle : sur une même ligne (même code), les séquences sélectionnées qui se chevauchent n'en forment plus qu'une
+function tlMergeGroups(m, ids){ const set = new Set(ids), rows = {};
+  m.events.filter(e => set.has(e.id) && e.e != null).forEach(e => (rows[tlKey(e)] = rows[tlKey(e)] || []).push(e));
+  const groups = []; Object.values(rows).forEach(r => { r.sort((a,b) => a.t - b.t); let cur = null;
+    r.forEach(e => { if (cur && e.t <= cur.end){ cur.list.push(e); cur.end = Math.max(cur.end, e.e); } else { cur = {list:[e], end:e.e}; groups.push(cur); } }); });
+  return groups.filter(g => g.list.length > 1); }
+function tlOverlaps(m, ids){ return tlMergeGroups(m, ids).reduce((a, g) => a + g.list.length - 1, 0); }
+function tlMerge(m, ids){ let n = 0; const gone = new Map();
+  tlMergeGroups(m, ids).forEach(g => { const [k, ...rest] = g.list; k.e = g.end; const seen = new Set((k.l || []).map(l => (l.g || "") + "|" + l.t));
+    rest.forEach(e => { (e.l || []).forEach(l => { const key = (l.g || "") + "|" + l.t; if (!seen.has(key)){ seen.add(key); (k.l = k.l || []).push(l); } }); gone.set(e.id, k.id); n++; }); });
+  if (!n) return 0;
+  m.events = m.events.filter(e => !gone.has(e.id)); m.events.forEach(e => { if (gone.has(e.lk)) e.lk = gone.get(e.lk); });
+  m.shots.forEach(sh => { if (gone.has(sh.ev)) sh.ev = gone.get(sh.ev); });
+  state.tlSel = (state.tlSel || []).filter(id => !gone.has(id)); if (gone.has(state.cwSel)) state.cwSel = gone.get(state.cwSel); return n; }
 function tlSelIds(m){ const ids = new Set(state.tlSel || []); if (state.cwSel) ids.add(state.cwSel); return [...ids].filter(id => m.events.some(e => e.id === id)); }
 function tlShift(m, ids, d){
   const set = new Set(ids); m.events.forEach(e => { if (e.lk && set.has(e.lk)) set.add(e.id); });
@@ -2607,7 +2621,7 @@ function renderCodage(m){
 
     <section class="panel c12"><div class="ph"><h2>Timeline</h2><div class="toolbar"><span class="sub">${live.length} actions</span>
       <div class="seg"><button data-act="tl-zoom" data-z="-1" aria-label="Dézoomer">−</button><button data-act="tl-zoom" data-z="1" aria-label="Zoomer">+</button></div>
-      ${tlSelIds(m).length ? `<span class="tl-selbar"><b>${tlSelIds(m).length} sélectionnée${tlSelIds(m).length > 1 ? "s" : ""}</b><button class="btn sm" data-act="tl-shift" data-dir="-1" aria-label="Décaler vers la gauche">◀</button><input type="number" id="tl-shift-s" value="${state.tlShiftS ?? 5}" min="0" step="0.5" style="width:64px" aria-label="Secondes"><span class="hint">s</span><button class="btn sm" data-act="tl-shift" data-dir="1" aria-label="Décaler vers la droite">▶</button><button class="btn sm" data-act="tl-unsel">Désélectionner</button></span>` : ""}
+      ${tlSelIds(m).length ? `<span class="tl-selbar"><b>${tlSelIds(m).length} sélectionnée${tlSelIds(m).length > 1 ? "s" : ""}</b><button class="btn sm" data-act="tl-shift" data-dir="-1" aria-label="Décaler vers la gauche">◀</button><input type="number" id="tl-shift-s" value="${state.tlShiftS ?? 5}" min="0" step="0.5" style="width:64px" aria-label="Secondes"><span class="hint">s</span><button class="btn sm" data-act="tl-shift" data-dir="1" aria-label="Décaler vers la droite">▶</button>${tlOverlaps(m, tlSelIds(m)) ? `<button class="btn sm" data-act="tl-merge" title="Fusionne, ligne par ligne, les séquences sélectionnées qui se chevauchent (labels conservés)">Fusionner les chevauchements (${tlOverlaps(m, tlSelIds(m))})</button>` : ""}<button class="btn sm" data-act="tl-unsel">Désélectionner</button></span>` : ""}
       ${liveClock(m).shift ? `<button class="btn sm primary" data-act="tl-back" title="Annule le déplacement manuel du curseur">↺ Remettre le curseur</button>` : ""}<button class="btn sm" data-act="tl-last" title="Place le curseur à la fin de la dernière séquence codée">Aller à la dernière séquence</button>
       <button class="btn sm" data-act="tl-follow" aria-pressed="${state.tlFollow !== false}">${state.tlFollow !== false ? "Suivi activé" : "Suivre la tête de lecture"}</button></div></div>
       <div class="tl-wrap" id="cw-tl">${timelineHTML(m)}</div></section>
@@ -2732,17 +2746,26 @@ function vpClock(m, c, a){ if (!vpOn()) return; const el = VP.el, vt = el.curren
   else if (a === "resume") el.play();
   else if (/^[+-]\d+$/.test(a)) el.currentTime = Math.max(0, vt + Number(a));
 }
+// Raccourcis vidéo : espace = lecture/pause, ←/→ = −/+5 s (Maj : 10 s), ↑/↓ = vitesse ×2 / ÷2 ; Alt+←/→ décale toujours les séquences sélectionnées
+const VP_RATES = [0.25, 0.5, 1, 2, 4, 8];
+function vpKey(evt){ const v = VP.el, k = evt.key;
+  if (k === " "){ evt.preventDefault(); v.paused ? v.play() : v.pause(); return true; }
+  if (k === "ArrowLeft" || k === "ArrowRight"){ evt.preventDefault(); v.currentTime = Math.max(0, v.currentTime + (k === "ArrowLeft" ? -1 : 1)*(evt.shiftKey ? 10 : 5)); return true; }
+  if (k === "ArrowUp" || k === "ArrowDown"){ evt.preventDefault(); let i = VP_RATES.findIndex(r => r >= v.playbackRate - 1e-6); if (i < 0) i = VP_RATES.length - 1;
+    if (VP_RATES[i] !== v.playbackRate && k === "ArrowDown") i++; i = Math.max(0, Math.min(VP_RATES.length - 1, i + (k === "ArrowUp" ? 1 : -1)));
+    v.playbackRate = VP_RATES[i]; const sel = VP.panel && VP.panel.querySelector('[data-vp="rate"]'); if (sel) sel.value = String(VP_RATES[i]); toast(`Vitesse ×${VP_RATES[i]}`, 900); return true; }
+  return false; }
 function vpBuild(){ if (VP.el) return VP.panel;
   const d = document.createElement("div"); d.id = "vp"; d.className = "vp"; d.hidden = true;
   d.innerHTML = `<div class="vp-bar"><b>🎬 Vidéo</b><span class="vp-name"></span><button type="button" data-vp="detach" title="Sortir la vidéo dans une fenêtre à part (2e écran)">⧉ Détacher</button><button type="button" data-vp="min" title="Réduire / agrandir">–</button><button type="button" data-vp="close" title="Fermer (la vidéo reste chargée)">✕</button></div>
   <div class="vp-body"><div class="vp-empty"><button type="button" class="btn primary" data-vp="open">Ouvrir la vidéo du match…</button><p>Formats : MP4 (H.264) conseillé, WebM, MOV/M4V (H.264).<br>MKV, AVI ou HEVC : convertir d'abord en MP4 (ex. HandBrake).</p></div>
   <video playsinline preload="auto" hidden></video>
   <input type="range" class="vp-seek" min="0" max="1000" value="0" hidden aria-label="Position dans la vidéo">
-  <div class="vp-ctl" hidden><button type="button" data-vp="-10">−10s</button><button type="button" data-vp="-3">−3s</button><button type="button" data-vp="-0.04" title="Image précédente">‹</button><button type="button" data-vp="play" class="vp-play">▶</button><button type="button" data-vp="+0.04" title="Image suivante">›</button><button type="button" data-vp="+3">+3s</button><button type="button" data-vp="+10">+10s</button>
-  <select data-vp="rate" aria-label="Vitesse">${[0.25,0.5,0.75,1,1.5,2,4].map(r => `<option value="${r}" ${r === 1 ? "selected" : ""}>×${r}</option>`).join("")}</select><span class="vp-t">00:00</span>
+  <div class="vp-ctl" hidden><button type="button" data-vp="-10">−10s</button><button type="button" data-vp="-3">−3s</button><button type="button" data-vp="-0.04" title="Image précédente">‹</button><button type="button" data-vp="play" class="vp-play">▶</button><button type="button" data-vp="+0.04" title="Image suivante">›</button><button type="button" data-vp="+3">+3s</button><button type="button" data-vp="+10">+10s</button><button type="button" data-vp="mute" class="vp-mute" title="Couper / remettre le son">🔊</button>
+  <select data-vp="rate" aria-label="Vitesse">${[0.25,0.5,0.75,1,1.5,2,4,8].map(r => `<option value="${r}" ${r === 1 ? "selected" : ""}>×${r}</option>`).join("")}</select><span class="vp-t">00:00</span>
   <button type="button" data-vp="k1" title="Cale le coup d'envoi 1re MT sur l'image affichée">Coup d'envoi ici</button><label style="display:inline-flex;gap:3px;align-items:center"><input type="checkbox" data-vp="link" checked> Lier au chrono</label><button type="button" data-vp="open">Changer…</button></div></div>
   <input type="file" accept="video/*,.mp4,.m4v,.mov,.webm" hidden>`;
-  document.body.appendChild(d); VP.panel = d; const v = d.querySelector("video"), f = d.querySelector("input[type=file]"), sk = d.querySelector(".vp-seek"); VP.el = v;
+  document.body.appendChild(d); VP.panel = d; const v = d.querySelector("video"), f = d.querySelector("input[type=file]"), sk = d.querySelector(".vp-seek"); VP.el = v; try { if (localStorage.getItem("vpMuted")){ v.muted = true; d.querySelector(".vp-mute").textContent = "🔇"; } } catch {}
   f.addEventListener("change", () => { const file = f.files && f.files[0]; if (!file) return; if (VP.url) URL.revokeObjectURL(VP.url); VP.url = URL.createObjectURL(file); VP.name = file.name; v.src = VP.url; f.value = ""; vpSync(); });
   v.addEventListener("error", () => { if (!VP.url) return; toast("Format vidéo non lu par l'appli. Convertis en MP4 (H.264) puis réessaie.", 6000); URL.revokeObjectURL(VP.url); VP.url = null; vpSync(); });
   v.addEventListener("loadedmetadata", () => { const m = current(); toast(`Vidéo chargée : ${VP.name}`, 1500); vpSync(); if (m.video && m.video.v1 != null) v.currentTime = m.video.v1; });
@@ -2753,6 +2776,7 @@ function vpBuild(){ if (VP.el) return VP.panel;
   d.addEventListener("click", e => { const b = e.target.closest("[data-vp]"); if (!b || b.tagName === "SELECT" || b.tagName === "INPUT") return; const k = b.dataset.vp, m = current();
     if (k === "open") f.click(); else if (k === "detach") VP.win ? vpAttach() : vpDetach(); else if (k === "close"){ if (VP.win) vpAttach(); state.vpOpen = false; v.pause(); vpSync(); render(); } else if (k === "min") d.classList.toggle("min");
     else if (k === "play") v.paused ? v.play() : v.pause();
+    else if (k === "mute"){ v.muted = !v.muted; b.textContent = v.muted ? "🔇" : "🔊"; try { localStorage.setItem("vpMuted", v.muted ? "1" : ""); } catch {} }
     else if (k === "k1"){ m.video = {...(m.video || {}), v1: v.currentTime}; persist(m); toast(`Coup d'envoi 1re MT calé à ${mmss(v.currentTime)} dans la vidéo.`, 2000); render(); }
     else if (/^[+-][\d.]+$/.test(k)){ v.pause(); v.currentTime = Math.max(0, v.currentTime + Number(k)); } });
   d.addEventListener("change", e => { const k = e.target.dataset.vp; if (k === "rate") v.playbackRate = Number(e.target.value); else if (k === "link"){ state.vpLink = e.target.checked; render(); } });
@@ -2776,7 +2800,7 @@ async function vpDetach(){ const d = VP.panel, v = VP.el, t = v.currentTime, pla
   doc.body.style.cssText = "margin:0;background:#000;height:100vh;display:flex"; doc.body.appendChild(doc.adoptNode(d));
   d.classList.add("vp-out"); d.classList.remove("min"); d.style.left = d.style.top = d.style.right = d.style.bottom = ""; VP.win = w;
   d.querySelector('[data-vp="detach"]').textContent = "⇲ Rattacher"; d.hidden = false;
-  doc.addEventListener("keydown", e => { if (e.target.closest && e.target.closest("input,select,textarea")) return; document.body.dispatchEvent(new KeyboardEvent("keydown", {key: e.key, code: e.code, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, bubbles: true})); });
+  doc.addEventListener("keydown", e => { if (e.target.closest && e.target.closest("input,select,textarea")) return; if ([" ","ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.key)) e.preventDefault(); document.body.dispatchEvent(new KeyboardEvent("keydown", {key: e.key, code: e.code, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, bubbles: true})); });
   w.addEventListener("pagehide", () => { if (VP.win === w) vpAttach(true); });
   v.currentTime = t; if (playing) setTimeout(() => v.play().catch(() => {}), 150);
   toast("Vidéo détachée : place la fenêtre sur ton 2e écran. Les raccourcis de codage marchent aussi depuis cette fenêtre.", 4000); }
@@ -2868,6 +2892,7 @@ document.addEventListener("click", async (evt) => {
   else if (a === "tl-follow"){ state.tlFollow = state.tlFollow === false; render(); }
   else if (a === "cw-sel"){ if (evt.target.closest('[data-act="cw-del"]')) return; if (state.tlDragged){ state.tlDragged = false; return; }
     tlSelect(t.dataset.id, evt.shiftKey || evt.ctrlKey || evt.metaKey); }
+  else if (a === "tl-merge"){ const n = tlMerge(m, tlSelIds(m)); persist(m); render(); toast(n ? `${n} chevauchement${n > 1 ? "s" : ""} fusionné${n > 1 ? "s" : ""}.` : "Aucun chevauchement.", 1800); }
   else if (a === "tl-shift"){ const d = Number(($("#tl-shift-s") || {}).value) || 0; if (!d){ toast("Indique un nombre de secondes."); return; } tlShift(m, tlSelIds(m), d*Number(t.dataset.dir)); persist(m); render(); }
   else if (a === "tl-row"){ const ids = m.events.filter(e => e.live && inWin(e) && tlKey(e) === t.dataset.k).sort((x,y) => x.t - y.t).map(e => e.id); if (!ids.length) return;
     state.tlSel = ids; state.cwSel = ids[0]; tlMoveTo(m, pressTime(m.events.find(e => e.id === ids[0])), true); persist(m); render(); toast(`${ids.length} séquence${ids.length > 1 ? "s" : ""} sélectionnée${ids.length > 1 ? "s" : ""} · TAB = suivante, Maj+TAB = précédente`, 2500); }
@@ -2930,6 +2955,7 @@ document.addEventListener("keydown", (evt) => {
     else if (evt.key === "Escape"){ state.cwEd = null; render(); }
     return;
   }
+  if (VP && VP.url && VP.el && !evt.ctrlKey && !evt.metaKey && !evt.altKey && vpKey(evt)) return;
   if ((evt.key === "ArrowLeft" || evt.key === "ArrowRight") && tlSelIds(current()).length){ evt.preventDefault(); const m = current(); tlShift(m, tlSelIds(m), (evt.key === "ArrowLeft" ? -1 : 1)*(evt.shiftKey ? 5 : 1)); persist(m); render(); return; }
   if (evt.key === "Escape" && tlSelIds(current()).length){ state.tlSel = []; state.cwSel = null; render(); return; }
   if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "z"){ evt.preventDefault(); cwUndo(); return; }
