@@ -1084,6 +1084,7 @@ function lsWrite(){
 const saveTimers = {};
 function persist(m){
   if (m.combo){ toast("Données combinées : lecture seule. Ouvre un match pour le modifier.", 2500); return; }
+  if (state.paused){ toast("Cette fenêtre est en pause : l'appli est ouverte dans une autre fenêtre. Rien n'est enregistré ici.", 4000); return; }
   if (!(UNDO.get(m.id) || {}).skip) undoTrack(m);
   m.updatedAt = Date.now();
   if (m.sample) return;
@@ -1094,9 +1095,29 @@ function persist(m){
       const body = JSON.parse(JSON.stringify(m));
       if (JSON.stringify(body).length > 250000){ body.events = body.events.map(e => { const c = {...e}; delete c.rm; return c; }); }
       await S.db.collection("matches").doc(m.id).set(body);
+      backupMatch(body);
     } catch (e){ console.error(e); toast(e && e.code === "quota_exceeded" ? "La base est pleine : supprime d'anciens matchs." : "Enregistrement impossible pour l'instant (" + ((e && (e.code || e.message)) || "erreur") + "). Réessaie dans un moment."); }
   }, 500);
 }
+// Sauvegardes automatiques : une copie complète du match toutes les 2 min pendant le travail, 10 copies tournantes par match (backups/<id>-<n>)
+const lastBackup = {};
+function backupMatch(body){ if (!S.db || !body || !(body.events || []).length) return; const now = Date.now(); if (now - (lastBackup[body.id] || 0) < 120000) return; lastBackup[body.id] = now;
+  const slot = Math.floor(now / 120000) % 10; S.db.collection("backups").doc(body.id + "-" + slot).set({...body, backupOf: body.id, backupAt: now}).catch(() => {}); }
+async function openBackups(){ if (!S.db){ toast("Sauvegardes indisponibles ici."); return; }
+  let list = []; try { list = (await S.db.collection("backups").get()).docs.map(d => ({...d.data(), _bid: d.id})); } catch {}
+  list.sort((a,b) => (b.backupAt||0) - (a.backupAt||0));
+  const bg = modal(`<h3>Sauvegardes automatiques</h3><p class="hint">Une copie de chaque match est prise toutes les 2 minutes pendant le codage (10 dernières par match). « Restaurer » crée un nouveau match à côté, sans rien écraser.</p>
+    <div class="combo-list">${list.length ? list.map((b, i) => `<div class="combo-row"><span><b>${esc(b.title || "Match")}</b>${b.opponent ? " · " + esc(b.opponent) : ""}</span><span class="hint">${new Date(b.backupAt).toLocaleString("fr-FR")} · ${(b.events || []).length} séquences</span><span style="flex:1"></span><button class="btn sm primary" data-bk="${i}">Restaurer</button></div>`).join("") : `<div class="empty">Aucune sauvegarde pour l'instant.</div>`}</div>
+    <div class="actions"><button class="btn" data-x="no">Fermer</button></div>`, "wide");
+  bg.querySelector('[data-x="no"]').onclick = () => bg.remove();
+  bg.addEventListener("click", e => { const b = e.target.closest("[data-bk]"); if (!b) return; const src = list[+b.dataset.bk]; const c = JSON.parse(JSON.stringify(src)); delete c._bid; delete c.backupOf; delete c.backupAt;
+    c.id = uid(); c.title = (src.title || "Match") + " (restauré " + new Date(src.backupAt).toLocaleString("fr-FR", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"}) + ")"; c.createdAt = Date.now(); c.sample = false;
+    state.matches.set(c.id, c); state.currentId = c.id; state.combo = null; persist(c); bg.remove(); render(); toast("Sauvegarde restaurée comme nouveau match.", 2500); }); }
+// Une seule fenêtre de l'appli enregistre : la plus récente prend la main, les autres se mettent en pause (évite qu'une fenêtre restée ouverte écrase le codage)
+try { const bc = new BroadcastChannel("analyse-data-win"); const me = uid();
+  bc.onmessage = (ev) => { const d = ev.data || {}; if (d.hello && d.from !== me && !state.paused){ state.paused = true; Object.values(saveTimers).forEach(clearTimeout);
+    const o = document.createElement("div"); o.className = "modal-bg"; o.innerHTML = `<div class="modal"><h3>Appli ouverte dans une autre fenêtre</h3><p>Pour ne pas écraser ton travail, cette fenêtre est mise en pause : plus rien n'y est enregistré. Continue dans la nouvelle fenêtre (elle contient tout ce qui a été enregistré).</p><div class="actions"><button class="btn primary" onclick="location.reload()">Recharger ici et reprendre la main</button></div></div>`; document.body.appendChild(o); } };
+  bc.postMessage({hello: 1, from: me}); } catch {}
 function thaw(o){ if (o == null) return o; try { return structuredClone(o); } catch { return JSON.parse(JSON.stringify(o)); } }
 async function removeMatch(id){
   state.matches.delete(id);
@@ -1649,7 +1670,7 @@ function renderDocs(){
         return `<tr><td><span class="pill them" style="--opp:${themCol(mm)};--opp-ink:${inkOn(themCol(mm))}">${esc(mm.opponent || "?")}</span> ${esc(mm.title)}</td><td>${esc(mm.date || "–")}</td><td>${esc(mm.source ? mm.source.format : "Saisie")}</td><td class="n">${st.us.goals}–${st.them.goals}</td>
         <td style="text-align:right;white-space:nowrap">${folderSelect("match", mm.id, mm.folder)} <button class="btn sm" data-act="open-match" data-id="${mm.id}">Ouvrir</button> <button class="btn sm" data-act="export-json" data-id="${mm.id}">Exporter</button> <button class="btn sm danger" data-act="del-match" data-id="${mm.id}">Supprimer</button></td></tr>`; }).join("")}</tbody></table></div>`
         : `<div class="empty">Aucun match enregistré. Importe un fichier ou crée un match vide pour saisir à la main.</div>`}
-      <div class="toolbar" style="margin-top:12px"><button class="btn primary" data-act="import">Importer un match</button><button class="btn" data-act="new-match">Créer un match vide</button>
+      <div class="toolbar" style="margin-top:12px"><button class="btn primary" data-act="import">Importer un match</button><button class="btn" data-act="backups">Sauvegardes automatiques</button><button class="btn" data-act="new-match">Créer un match vide</button>
         ${S.assets ? `<button class="btn" data-act="club-logo">${state.settings.clubLogo ? ("Changer le logo " + TN()) : ("Ajouter le logo " + TN())}</button>` : ""}</div>
       <p class="hint">${S.mode === "cloud" ? "Les matchs sont enregistrés dans l'application et retrouvés sur tous tes appareils." : "Les matchs sont enregistrés dans ce navigateur uniquement."}</p>
     </section>
@@ -1827,6 +1848,7 @@ document.addEventListener("click", async (evt) => {
     case "player": state.player = t.dataset.p; render(); break;
     case "scope": state.scope = t.dataset.v; render(); break;
     case "combo-edit": openComboModal(); break;
+    case "backups": openBackups(); break;
     case "combo-off": state.combo = null; comboCache = null; render(); break;
     case "folder": state.folder = t.dataset.v; render(); break;
     case "folder-new": folderAsk("Nouveau dossier", "", async v => { if (folderList().includes(v)){ toast("Ce dossier existe déjà."); return; } state.settings = {...state.settings, folders:[...folderList(), v]}; state.folder = v; render(); await saveSettings(); }); break;
