@@ -267,6 +267,9 @@ details.model code{background:var(--surface-2);padding:1px 5px;border-radius:4px
 .folder-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px}
 select.f.sm{padding:3px 6px;font-size:12px}
 .tl-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tl-name .hint{flex:none}.tl-ren{flex:none;margin-left:2px;opacity:.35;cursor:pointer;padding:0 3px;border-radius:4px}.tl-name:hover .tl-ren,.tl-ren:focus{opacity:.8}.tl-ren:hover{opacity:1;background:rgba(127,127,127,.2)}
+.ipl{position:fixed;left:16px;bottom:16px;z-index:55;width:min(520px,94vw);background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 36px rgba(0,0,0,.35);padding:8px 10px}
+.ipl-h{display:flex;gap:8px;align-items:center;margin-bottom:4px}.ipl-o{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px}.ipl-o .seg button{font-size:11px;padding:3px 7px}
+.save-alert{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:center;padding:8px 14px;background:#c0392b;color:#fff;font-size:13px}.save-alert .btn{background:#fff;color:#c0392b}
 .vp{position:fixed;right:16px;bottom:16px;z-index:60;width:560px;min-width:300px;max-width:96vw;background:#0d1626;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.45);resize:both;overflow:hidden;display:flex;flex-direction:column}
 .vp[hidden]{display:none}
 .vp.vp-out{position:static;width:100%;height:100vh;max-width:none;border:0;border-radius:0;resize:none}.vp.vp-out .vp-bar{cursor:default}
@@ -984,7 +987,7 @@ function playerStats(m, name){
   const notes = {pos:0, ame:0, int:0}; const remarks = [];
   tags.forEach(t => { if (t.r) notes[t.r]++; const txt = String(t.rm||"").trim(); if (txt) remarks.push({r:t.r, txt, t:t.t}); });
   const zr = zoneCounts(m, "recup", () => ev), zp = zoneCounts(m, "perte", () => ev);
-  return {name, tags:tags.length, ev, byAction, shots, notes, remarks, zr, zp, ind: indivBreakdown(tags), indN: tags.filter(t => t.w === "i").length,
+  return {name, tags:tags.length, ev, byAction, shots, notes, remarks, zr, zp, ind: indivBreakdown(tags), indN: tags.filter(t => t.w === "i").length, touches: indTouches(tags),
     actions: ev.length, xg: shots.reduce((a,s) => a + xgOf(s), 0), goals: shots.filter(s => s.res === "but").length + ev.filter(e => e.k === "BUT" && e.tm === "us").length,
     recups: ev.filter(e => e.k === "RECUP" && e.tm === "us").length, pertes: ev.filter(e => e.k === "PERTE" && e.tm === "us").length,
     extra: (m.perPlayer || {})[name] || null};
@@ -1010,7 +1013,7 @@ function mergeStats(list){
   for (const s of list){
     out.indN += s.indN || 0; for (const k in (s.ind || {})){ const r = out.ind[k] = out.ind[k] || {k, n:0, ok:0, ko:0, side:s.ind[k].side}; r.n += s.ind[k].n; r.ok += s.ind[k].ok; r.ko += s.ind[k].ko; }
     out.tags += s.tags; out.actions += s.actions; out.xg += s.xg; out.goals += s.goals; out.recups += s.recups; out.pertes += s.pertes;
-    out.shots.push(...s.shots); s.remarks.forEach(r => out.remarks.push(r));
+    out.shots.push(...s.shots); (out.touches = out.touches || []).push(...(s.touches || [])); s.remarks.forEach(r => out.remarks.push(r));
     for (const k in s.byAction) out.byAction[k] = (out.byAction[k]||0) + s.byAction[k];
     for (const k in s.notes) out.notes[k] += s.notes[k];
     for (const key of ["zr","zp"]){ ZONES.forEach(z => out[key].counts[z] += s[key].counts[z]); out[key].tagged += s[key].tagged; out[key].total += s[key].total; for (const b in s[key].bands) out[key].bands[b] = (out[key].bands[b]||0) + s[key].bands[b]; }
@@ -1095,8 +1098,8 @@ function persist(m){
       const body = JSON.parse(JSON.stringify(m));
       if (JSON.stringify(body).length > 250000){ body.events = body.events.map(e => { const c = {...e}; delete c.rm; return c; }); }
       await S.db.collection("matches").doc(m.id).set(body);
-      backupMatch(body);
-    } catch (e){ console.error(e); toast(e && e.code === "quota_exceeded" ? "La base est pleine : supprime d'anciens matchs." : "Enregistrement impossible pour l'instant (" + ((e && (e.code || e.message)) || "erreur") + "). Réessaie dans un moment."); }
+      backupMatch(body); saveOk(m.id);
+    } catch (e){ console.error(e); saveFail(m); toast(e && e.code === "quota_exceeded" ? "La base est pleine : supprime d'anciens matchs." : "Enregistrement impossible pour l'instant (" + ((e && (e.code || e.message)) || "erreur") + "). Réessaie dans un moment."); }
   }, 500);
 }
 // Sauvegardes automatiques : une copie complète du match toutes les 2 min pendant le travail, 10 copies tournantes par match (backups/<id>-<n>)
@@ -1116,8 +1119,21 @@ async function openBackups(){ if (!S.db){ toast("Sauvegardes indisponibles ici."
 // Une seule fenêtre de l'appli enregistre : la plus récente prend la main, les autres se mettent en pause (évite qu'une fenêtre restée ouverte écrase le codage)
 try { const bc = new BroadcastChannel("analyse-data-win"); const me = uid();
   bc.onmessage = (ev) => { const d = ev.data || {}; if (d.hello && d.from !== me && !state.paused){ state.paused = true; Object.values(saveTimers).forEach(clearTimeout);
-    const o = document.createElement("div"); o.className = "modal-bg"; o.innerHTML = `<div class="modal"><h3>Appli ouverte dans une autre fenêtre</h3><p>Pour ne pas écraser ton travail, cette fenêtre est mise en pause : plus rien n'y est enregistré. Continue dans la nouvelle fenêtre (elle contient tout ce qui a été enregistré).</p><div class="actions"><button class="btn primary" onclick="location.reload()">Recharger ici et reprendre la main</button></div></div>`; document.body.appendChild(o); } };
+    const o = document.createElement("div"); o.className = "modal-bg"; o.innerHTML = `<div class="modal"><h3>Appli ouverte dans une autre fenêtre</h3><p>Pour ne pas écraser ton travail, cette fenêtre est mise en pause : plus rien n'y est enregistré. Continue dans la nouvelle fenêtre (elle contient tout ce qui a été enregistré).</p><div class="actions"><button class="btn" id="win-keep">Garder cette fenêtre (elle contient mon travail)</button><button class="btn primary" onclick="location.reload()">Recharger ici</button></div></div>`; document.body.appendChild(o);
+    o.querySelector("#win-keep").onclick = () => { state.paused = false; o.remove(); bc.postMessage({hello: 1, from: me}); Object.values(state.matches).length; [...state.matches.values()].filter(x => !x.sample).forEach(x => { if (x.updatedAt && Date.now() - x.updatedAt < 6*3600e3) persist(x); }); toast("Cette fenêtre reprend la main : l'autre est mise en pause.", 3000); }; } };
   bc.postMessage({hello: 1, from: me}); } catch {}
+// Enregistrement en échec : bandeau rouge permanent + nouvelle tentative toutes les 5 s jusqu'à réussite
+const saveFailing = new Set();
+function saveFail(m){ saveFailing.add(m.id); saveBanner(); clearTimeout(saveTimers["retry-" + m.id]); saveTimers["retry-" + m.id] = setTimeout(() => { nativePing(); if (saveFailing.has(m.id) && state.matches.get(m.id)) persist(state.matches.get(m.id)); }, 5000); }
+function saveOk(id){ if (saveFailing.delete(id)){ saveBanner(); toast("Enregistrement rétabli : tout est sauvegardé.", 3000); } }
+function saveBanner(){ let b = document.getElementById("save-alert"); if (!saveFailing.size){ if (b) b.remove(); return; }
+  if (!b){ b = document.createElement("div"); b.id = "save-alert"; b.className = "save-alert"; document.body.appendChild(b); }
+  b.innerHTML = `<b>⚠ Données NON enregistrées</b><span>L'appli n'arrive plus à écrire sur le disque (nouvel essai toutes les 5 s). Ne ferme pas cette fenêtre.</span><button class="btn sm" id="save-alert-dl">Télécharger une copie de secours</button>`;
+  b.querySelector("#save-alert-dl").onclick = () => { const ms = [...saveFailing].map(id => state.matches.get(id)).filter(Boolean); ms.forEach(m => { const url = URL.createObjectURL(new Blob([JSON.stringify(m)], {type:"application/json"})); const a = document.createElement("a"); a.href = url; a.download = `secours-${slug(m.opponent || m.title || "match")}-${new Date().toISOString().slice(0,16).replace(/[:T]/g, "-")}.json`; document.body.appendChild(a); a.click(); a.remove(); }); toast("Copie de secours téléchargée (dossier Téléchargements). Tu pourras la réimporter avec « Importer ».", 6000); }; }
+// Appli bureau : signal de vie depuis un Worker (non ralenti quand la fenêtre est réduite), pour que le serveur local ne s'arrête jamais pendant le travail
+function nativePing(){ if (window.__NATIVE__) fetch("/api/ping", {method:"POST"}).catch(() => {}); }
+if (window.__NATIVE__){ try { const w = new Worker(URL.createObjectURL(new Blob([`setInterval(() => fetch(${JSON.stringify(location.origin + "/api/ping")}, {method:"POST"}).catch(() => {}), 4000);`], {type:"text/javascript"}))); window.__pingWorker = w; } catch {}
+  ["visibilitychange", "focus", "pointerdown", "keydown"].forEach(ev => addEventListener(ev, () => { const n = Date.now(); if (n - (window.__lastPing || 0) > 3000){ window.__lastPing = n; nativePing(); } }, true)); }
 function thaw(o){ if (o == null) return o; try { return structuredClone(o); } catch { return JSON.parse(JSON.stringify(o)); } }
 async function removeMatch(id){
   state.matches.delete(id);
@@ -1190,7 +1206,11 @@ async function saveFile(filename, data){
     if (!window.claude){ const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data])); const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000); return true; }
     toast("Le téléchargement n'est pas disponible dans cette vue. Ouvre l'application sur claude.ai."); return false; }
   try { const r = await S.downloads.save({filename, data}); if (r && r.path) toast("Enregistré dans " + r.path, 6000); return true; }
-  catch (e){ if (e && e.code !== "declined") toast(e && e.code === "rejected_extension" ? "Ce format ne peut pas être téléchargé ici." : "Téléchargement impossible : " + (e && e.message || "erreur inconnue")); return false; }
+  catch (e){ if (e && (e.code === "declined" || e.code === "rejected_extension")){ if (e.code !== "declined") toast("Ce format ne peut pas être téléchargé ici."); return false; }
+    // Secours : téléchargement direct par le navigateur (marche même si le serveur local ne répond plus)
+    try { const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data])); const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast("Fichier téléchargé dans ton dossier Téléchargements (" + filename + ").", 6000); return true; } catch {}
+    toast("Téléchargement impossible : " + (e && e.message || "erreur inconnue")); return false; }
 }
 
 /* =========================================================
@@ -1635,6 +1655,7 @@ function renderIndiv(m){
         <div class="duels" style="margin-top:8px">${duelHTML("Positives / À améliorer", ps.notes.pos, ps.notes.ame, fmtInt)}</div>
         <div class="legend" style="margin-top:6px"><span><span class="pill good">${ps.notes.pos} positive${ps.notes.pos>1?"s":""}</span></span><span><span class="pill bad">${ps.notes.ame} à améliorer</span></span><span><span class="pill">${ps.notes.int} intention${ps.notes.int>1?"s":""}</span></span></div></div>` : ""}
     </section>
+    ${(ps.touches || []).length ? `<section class="panel c12"><div class="ph"><h2>Touches de balle</h2><span class="sub">${ps.touches.length} touche${ps.touches.length > 1 ? "s" : ""} placée${ps.touches.length > 1 ? "s" : ""} · attaque vers la droite</span></div><div style="max-width:760px">${heatSVG(ps.touches, "var(--us,var(--pau))")}</div></section>` : ""}
     <section class="panel c7"><div class="ph"><h2>Ses tirs</h2><span class="sub">${ps.shots.length} tir${ps.shots.length>1?"s":""} · xG ${fmt1(ps.xg)}</span></div>
       ${ps.shots.length ? `<div class="half-map">${shotMapSVG(m, {onlyUs:true, shots:ps.shots})}</div>` : `<div class="empty">Aucun tir attribué à ce joueur. Renseigne le tireur quand tu places un tir.</div>`}
       ${ps.shots.length ? `<div class="tscroll" style="margin-top:8px"><table class="t"><thead><tr><th>Min.</th><th>Corps</th><th>Adv.</th><th>Situation</th><th>Résultat</th><th style="text-align:right">xG</th></tr></thead><tbody>
@@ -2071,7 +2092,7 @@ function reportHTML(m){
           <div><small>Actions</small><strong>${ps.actions}</strong></div><div><small>Récup.</small><strong>${ps.recups}</strong></div><div><small>Pertes</small><strong>${ps.pertes}</strong></div>
           <div><small>Positives</small><strong>${ps.notes.pos}</strong></div><div><small>À améliorer</small><strong>${ps.notes.ame}</strong></div><div><small>Intentions</small><strong>${ps.notes.int}</strong></div></div></div>
           ${ps.indN ? `<div class="box"><h4>Codage indiv · ${ps.indN}</h4><table>${Object.values(ps.ind).sort((a,b) => b.n - a.n).slice(0,14).map(x => `<tr><td>${esc(x.k)}</td><td class="n">${x.n}</td><td class="n">${x.ok + x.ko ? Math.round(x.ok/(x.ok + x.ko)*100) + " %" : ""}</td></tr>`).join("")}</table></div>` : `<div class="box"><h4>Actions</h4><table>${actions.map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${v}</td></tr>`).join("") || "<tr><td>Aucune action liée</td></tr>"}</table></div>`}</div>
-        <div class="col"><div class="box"><h4>Tirs</h4>${shotMapSVG(m, {onlyUs:true, shots:ps.shots, print:true})}</div>
+        <div class="col"><div class="box"><h4>Tirs</h4>${shotMapSVG(m, {onlyUs:true, shots:ps.shots, print:true})}</div>${(ps.touches || []).length ? `<div class="box"><h4>Touches de balle · ${ps.touches.length}</h4>${heatSVG(ps.touches, usPrint(), true)}</div>` : ""}
           ${ps.extra ? `<div class="box"><h4>Données importées</h4><table>${Object.entries(ps.extra).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${Number.isInteger(v)?v:fmt1(v)}</td></tr>`).join("")}</table></div>` : ""}</div>
         <div class="col"><div class="box"><h4>Récupérations</h4>${zoneGridSVG(ps.zr, usPrint(), {print:true})}</div><div class="box"><h4>Pertes</h4>${zoneGridSVG(ps.zp, opp, {print:true})}</div></div>
       </div>${foot}</div>`;
@@ -2270,7 +2291,7 @@ function cwPress(i){
   try { cwPressInner(i); } catch (err){ console.error(err); toast("Le bouton n'a pas pu être enregistré : " + (err && err.message || err), 5000); }
 }
 function cwPressInner(i){
-  const focus = CWK === "i" && state.indMode === "focus";
+  const focus = CWK === "i" && indFocus();
   if (focus && isPlayerCode(CWB[i])){ state.indPlayer = i; render(); cwBanner(current(), null, [], [], [], "Joueur suivi : " + CWB[i].n); return; }
   const m = ensureLiveMatch();
   const t = nowSec(m); const root = CWB[i];
@@ -2312,13 +2333,16 @@ function cwPressInner(i){
         const nowT = nowSec(m); const atCur = [...pool].reverse().find(e => e.bi === sel && e.lk && e.t <= nowT + 1 && (e.e ?? nowT) >= nowT - 1); const last = atCur || [...pool].reverse().find(e => e.bi === sel);
         // Chaque clic crée une séquence ; seule une précision dont le groupe n'est pas encore rempli complète la dernière séquence
         // Séquence reliée au collectif sous le curseur : on la complète au lieu d'en recréer une
-        const fill = atCur ? !(atCur.l || []).some(x => x.g === (b.g || undefined) && x.t === b.n) : last && !cwOpensSeq(b) && b.g && !(last.l || []).some(x => x.g === b.g);
+        let fill = atCur ? !(atCur.l || []).some(x => x.g === (b.g || undefined) && x.t === b.n) : last && !cwOpensSeq(b) && b.g && !(last.l || []).some(x => x.g === b.g);
+        // Mode « Une ligne » : tant que la séquence du joueur est en cours (ou finie depuis moins de 4 s), le descripteur la complète et la prolonge
+        if (state.indMode === "one" && last && (last.e ?? nowT) >= nowT - 4){ fill = true; last.e = Math.max(last.e ?? nowT, nowT + (pb.lg || 5)); }
         if (!fill){ run(sel, "activate", []); tgt = m.events.find(e => e.id === created[created.length - 1]); }
         else tgt = last;
       } else tgt = (state.cwSel && pool.find(e => e.id === state.cwSel)) || (want && [...pool].reverse().find(e => e.n === want)) || [...pool].reverse().find(e => !cwIsToggle(btnOf(e)));
       if (!tgt){ toast(CWK === "i" ? "Appuie d'abord sur un joueur." : "Aucune action à qui ajouter ce label."); return; }
       const had = (tgt.l || []).some(x => x.g === b.g && x.t === b.n);
       addLabel(tgt, b.g, b.n, true); labelled.push(tgt.id);
+      if (focus && state.indMode === "one"){ tgt.one = 1; const kind = indPtKind(b.n); if (kind && !/^(RESULT|TYPE)/i.test(b.g || "")){ (tgt.pts = tgt.pts || []).push({a: kind, t: nowSec(m)}); state.indPlace = {ev: tgt.id, i: tgt.pts.length - 1}; } }
       if (had) return;
       ev = tgt; // les labels liés (ex. PERDU → PERTE) s'ajoutent à la même action
     }
@@ -2395,7 +2419,7 @@ function cwButtonHTML(b, m, tgt){
     return `<div class="cw-b txt ${zone ? "zone" : ""} ${/^terrain$/.test(b.n) ? "pitch" : ""}" style="${st}color:${inkOn(b.bg || "#ffffff")}">${zone ? "" : esc(b.n)}</div>`;
   }
   const on = b.t === 0 ? !!cwActive(m, b.i) : !!(tgt && (tgt.l || []).some(x => x.g === b.g && x.t === b.n));
-  const fol = CWK === "i" && state.indMode === "focus" && state.indPlayer === b.i;
+  const fol = CWK === "i" && indFocus() && state.indPlayer === b.i;
   return `<button type="button" class="cw-b ${b.w < 40 ? "tiny" : ""} ${b.t === 0 ? "code" : "lab"} ${on ? (b.t === 0 ? "on" : "tgt") : ""} ${fol ? "fol" : ""}" data-cw="${b.i}" style="${st}color:${b.fg || inkOn(b.bg || "#ddd")};border-color:${b.bd || "rgba(0,0,0,.4)"}" title="${esc(b.n + (b.g ? " · " + b.g : "") + (b.k ? " · touche " + b.k : "") + (b.ld != null ? ` · ${b.ld}s avant / ${b.lg ?? 0}s après` : ""))}">${esc(b.n)}${b.k ? `<span class="hk">${esc(b.k)}</span>` : ""}</button>`;
 }
 const TL_ZOOMS = [.5, 1, 2, 4, 8];
@@ -2508,15 +2532,16 @@ function cwLinksSVG(){
 function cwOpensSeq(b){ return b.seq != null ? !!b.seq : !b.g || (!/^(RESULT|TYPE)/i.test(b.g) && !(CW_OUT[b.i] || []).some(([ty,k]) => ty === 1 && CWB[k] && CWB[k].t === 1 && !CWB[k].g)); }
 // Ligne de timeline : en indiv, une ligne par joueur et par action (PASSE, TOUCHE…) pour bien séparer les séquences
 const SEQ_CTX = /^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/;
-function tlKey(e){ if (e.w !== "i") return e.n; const a = (e.l || []).find(x => !SEQ_CTX.test(x.g) && (!x.g || !/^(RESULT|TYPE)/i.test(x.g))); return a ? e.n + " · " + a.t : e.n; }
+function tlKey(e){ if (e.w !== "i" || e.one) return e.n; const a = (e.l || []).find(x => !SEQ_CTX.test(x.g) && (!x.g || !/^(RESULT|TYPE)/i.test(x.g))); return a ? e.n + " · " + a.t : e.n; }
 function cwStyle(){ return (state.settings && state.settings.cwStyle) || "app"; }
+const indFocus = () => state.indMode === "focus" || state.indMode === "one";
 function cwPlayers(){ return CW_IND.b.filter(b => !b.r && isPlayerCode(b)).sort((a,b) => parseInt(a.n) - parseInt(b.n)); }
 function cwIndBarHTML(){
-  const pl = cwPlayers(); const focus = state.indMode === "focus";
-  return `<section class="panel c12 cw-indbar"><div class="seg"><button data-act="cw-indmode" data-v="multi" aria-pressed="${!focus}">Pendant le collectif</button><button data-act="cw-indmode" data-v="focus" aria-pressed="${focus}">Joueur suivi</button></div>
+  const pl = cwPlayers(); const focus = indFocus();
+  return `<section class="panel c12 cw-indbar"><div class="seg"><button data-act="cw-indmode" data-v="multi" aria-pressed="${!focus}">Pendant le collectif</button><button data-act="cw-indmode" data-v="focus" aria-pressed="${state.indMode === "focus"}">Joueur suivi</button><button data-act="cw-indmode" data-v="one" aria-pressed="${state.indMode === "one"}" title="Une seule ligne par joueur : les boutons jaunes décrivent la séquence en cours ; TIR et TOUCHE se placent sur le terrain">Une ligne</button></div>
     ${focus ? `<label class="hint" for="cw-indpl">Joueur</label><select class="f" id="cw-indpl">${pl.map(b => `<option value="${b.i}" ${state.indPlayer === b.i ? "selected" : ""}>${esc(b.n)}</option>`).join("")}</select>` : `<span class="hint">Tu codes plusieurs joueurs : appuie sur le joueur puis sur ses descripteurs.</span>`}
     ${focus ? `<label class="hint" for="cw-gomin">Minute</label><input type="text" id="cw-gomin" placeholder="2, 45+1, 67…" style="width:90px"><button class="btn sm" data-act="cw-gomin">Aller</button>` : ""}
-    <span style="flex:1"></span><button class="btn sm" data-act="cw-names">Gérer les joueurs</button></section>
+    <span style="flex:1"></span>${focus ? `<button class="btn sm" data-act="ind-one" title="Passe les séquences déjà codées du joueur sur une seule ligne et fusionne celles qui se chevauchent (rien n'est supprimé, Ctrl+Z possible)">Regrouper sur une ligne</button>` : ""}<button class="btn sm" data-act="cw-names">Gérer les joueurs</button></section>
     ${focus ? cwColJumpHTML() : ""}`;
 }
 // Post-match : retrouver les séquences du codage collectif pour placer le curseur et attribuer des actions au joueur suivi
@@ -2619,10 +2644,10 @@ function cwEdDup(i){
 }
 function renderCodage(m){
   applyCustomWins(); if (!((state.settings && state.settings.cwCustom) || {}).i) applyIndivNames(); setCw(state.cwMode === "i" ? "i" : "c");
-  if (CWK === "i" && state.indMode === "focus" && (state.indPlayer == null || !CWB[state.indPlayer] || CWB[state.indPlayer].r || !isPlayerCode(CWB[state.indPlayer]))){ const f = cwPlayers()[0]; state.indPlayer = f ? f.i : null; }
+  if (CWK === "i" && indFocus() && (state.indPlayer == null || !CWB[state.indPlayer] || CWB[state.indPlayer].r || !isPlayerCode(CWB[state.indPlayer]))){ const f = cwPlayers()[0]; state.indPlayer = f ? f.i : null; }
   const c = liveClock(m); const t = nowSec(m);
   const live = m.events.filter(e => e.live && inWin(e));
-  const recent = (CWK === "i" && state.indMode === "focus" && state.indPlayer != null ? live.filter(e => e.bi === state.indPlayer).sort((a,b) => pressTime(a) - pressTime(b)) : live).slice(-25).reverse();
+  const recent = (CWK === "i" && indFocus() && state.indPlayer != null ? live.filter(e => e.bi === state.indPlayer).sort((a,b) => pressTime(a) - pressTime(b)) : live).slice(-25).reverse();
   const pool = live;
   const tgt = (state.cwSel && pool.find(e => e.id === state.cwSel)) || null;
   const order = [...CWB].sort((a,b) => (a.t === 2 ? 0 : 1) - (b.t === 2 ? 0 : 1) || (a.t === 2 && b.t === 2 ? b.w*b.h - a.w*a.h : 0));
@@ -2652,14 +2677,14 @@ function renderCodage(m){
       <span class="hint">Ces labels sont ajoutés à chaque action, comme dans ta fenêtre (plus Halftime, QT et Minute).</span></div>
     ${m.sample ? `<p class="hint" style="margin:8px 0 0">Tu es sur le match d'exemple : lancer la timeline ou appuyer sur un bouton crée automatiquement un nouveau match à coder.</p>` : ""}</section>
 
-    ${CWK === "i" && !state.cwEdit ? cwIndBarHTML() : ""}
+    ${CWK === "i" && !state.cwEdit ? cwIndBarHTML() + indPlaceHTML(m) : ""}
     ${CWK === "c" && !state.cwEdit ? cwPlayerStripHTML(m, tgt) : ""}
     <section class="panel ${state.cwEdit ? "c8" : "c12"}" style="padding:10px">
       <div class="cw-tools">${state.cwEdit ? `<b>Modification de la fenêtre ${CWK === "i" ? "indiv" : "collective"}</b><span class="hint">Glisse un bouton pour le déplacer, clique pour le modifier. Flèches = déplacer, Suppr = supprimer.</span><span style="flex:1"></span>
         <button class="btn sm" data-act="cwe-add" data-t="0">+ Code</button><button class="btn sm" data-act="cwe-add" data-t="1">+ Label</button><button class="btn sm" data-act="cwe-add" data-t="2">+ Titre / zone</button>${CWK === "i" ? `<button class="btn sm" data-act="cw-names">Joueurs</button>` : ""}<button class="btn sm danger" data-act="cwe-reset">Fenêtre d'origine</button><button class="btn sm primary" data-act="cwe-done">Terminer</button>`
         : `<span style="flex:1"></span><div class="seg"><button data-act="cw-style" data-v="app" aria-pressed="${cwStyle() === "app"}">Style appli</button><button data-act="cw-style" data-v="sc" aria-pressed="${cwStyle() === "sc"}">Style Sportscode</button></div><button class="btn sm" data-act="cwe-start">✎ Modifier la fenêtre</button>`}</div>
       <div class="cw-stage ${cwStyle() === "app" ? "app" : ""} ${state.cwEdit ? "editing" : ""}" id="cw-stage"><div class="cw-inner" id="cw-inner" style="width:${CW_W}px;height:${CW_H}px">${order.map(b => cwButtonHTML(b, m, tgt)).join("")}${state.cwLinks || state.cwEdit ? cwLinksSVG() : ""}</div></div>
-      ${state.cwEdit ? "" : `<p class="hint" style="margin:8px 4px 0">${CWK === "i" ? (state.indMode === "focus" ? `Joueur suivi : chaque descripteur d'action (PASSE, TOUCHE, DUEL SOL…) ouvre une nouvelle séquence pour le joueur choisi, les précisions (AVANT, GAGNE, REUSSI…) complètent la séquence en cours. Appuyer sur un joueur le choisit comme joueur suivi.` : `Appuie sur un joueur (raccourci affiché sur le bouton), puis sur l'action et son résultat : ils s'ajoutent à sa dernière action (8 s avant / 8 s après). Chaque joueur codé alimente l'onglet Indiv.`) : `Raccourcis clavier actifs (AZERTY) : a = but pour, z = tir, e = centre, & / é = attaque / défense… Majuscule = action adverse. Vert = action en cours.`} ${tgt ? "Bleu = labels de l'action sélectionnée." : ""} TAB coupe tout (ou passe à la séquence suivante quand une ligne est sélectionnée en cliquant son nom), Ctrl+Z annule.
+      ${state.cwEdit ? "" : `<p class="hint" style="margin:8px 4px 0">${CWK === "i" ? (indFocus() ? `Joueur suivi : chaque descripteur d'action (PASSE, TOUCHE, DUEL SOL…) ouvre une nouvelle séquence pour le joueur choisi, les précisions (AVANT, GAGNE, REUSSI…) complètent la séquence en cours. Appuyer sur un joueur le choisit comme joueur suivi.` : `Appuie sur un joueur (raccourci affiché sur le bouton), puis sur l'action et son résultat : ils s'ajoutent à sa dernière action (8 s avant / 8 s après). Chaque joueur codé alimente l'onglet Indiv.`) : `Raccourcis clavier actifs (AZERTY) : a = but pour, z = tir, e = centre, & / é = attaque / défense… Majuscule = action adverse. Vert = action en cours.`} ${tgt ? "Bleu = labels de l'action sélectionnée." : ""} TAB coupe tout (ou passe à la séquence suivante quand une ligne est sélectionnée en cliquant son nom), Ctrl+Z annule.
         <button class="btn sm" data-act="cw-links">${state.cwLinks ? "Masquer les liens" : "Afficher les liens"}</button></p>`}</section>
     ${state.cwEdit ? `<section class="panel c4 cwe-panel">${cwEditorHTML()}</section>` : ""}
 
@@ -2713,10 +2738,41 @@ function locPickerSVG(ev){
   return `${svgOpen(`-2 -6 ${L+4} ${W+8}`, "editing", `data-role="cwloc" data-ev="${ev.id}"`)}${arrowDefs()}${pitchLines()}${hl}${g}
     <line x1="${L*0.62}" y1="-3" x2="${L*0.82}" y2="-3" stroke="var(--ink-2)" stroke-width=".5" marker-end="url(#arr)"/><text x="${L*0.6}" y="-1.8" text-anchor="end" font-size="3.6" fill="var(--ink-2)">SENS DU JEU ${esc(TS().toUpperCase())}</text></svg>`;
 }
+// Mode « Une ligne » : TIR / TOUCHE ajoutent un point à placer (tir → xG + rapport indiv ; touches → heatmap)
+function indPtKind(n){ n = String(n).toUpperCase(); return /\b(TIR|FRAPPE)\b/.test(n) && !/CONTR/.test(n) ? "TIR" : /\bTOUCHES?\b|TOUCHE DE BALLE|BALLON TOUCH/.test(n) ? "TOUCHE" : null; }
+function indPlaceHTML(m){ const p = state.indPlace; if (!p) return ""; const e = m.events.find(x => x.id === p.ev), pt = e && (e.pts || [])[p.i]; if (!pt){ state.indPlace = null; return ""; }
+  const tir = pt.a === "TIR", d = state.iplDraft || (state.iplDraft = {body:"pied", res: indShotRes(e), sit:"jeu"});
+  const seg = (f, o) => `<div class="seg">${Object.entries(o).map(([k,l]) => `<button data-act="ipl-f" data-f="${f}" data-v="${k}" aria-pressed="${d[f] === k}">${l}</button>`).join("")}</div>`;
+  return `<div class="ipl"><div class="ipl-h"><b>${tir ? "Tir" : "Touche de balle"} · ${esc(e.pl || e.n)}</b><span class="hint">${clockLabel(m, pt.t)}</span><span style="flex:1"></span><button class="btn sm" data-act="ipl-skip">Passer</button></div>
+    ${tir ? `<div class="ipl-o">${seg("body", BODY)}${seg("res", RES)}${seg("sit", SIT)}</div>` : ""}
+    <div class="hint" style="margin:2px 0 4px">Clique l'endroit ${tir ? "de la frappe" : "de la touche"} (attaque vers la droite).</div>
+    ${svgOpen(`-2 -2 ${L+4} ${W+4}`, "editing", 'data-role="iplace"')}${pitchLines()}</svg></div>`; }
+function indShotRes(e){ const t = (e.l || []).map(x => String(x.t).toUpperCase()); return t.includes("BUT") ? "but" : t.some(x => /HORS CADRE|NON CADR/.test(x)) ? "horscadre" : t.some(x => /CONTR/.test(x)) ? "contre" : "cadre"; }
+function indPlaceAt(m, x, y){ const p = state.indPlace, e = p && m.events.find(z => z.id === p.ev), pt = e && (e.pts || [])[p.i]; if (!pt) return;
+  pt.x = Math.round(x*10)/10; pt.y = Math.round(y*10)/10;
+  if (pt.a === "TIR"){ const d = state.iplDraft || {}; const shot = {id: uid(), tm:"us", x: pt.x, y: pt.y, body: d.body || "pied", opp: 1, sit: d.sit || "jeu", res: d.res || "cadre", p: e.pl || playerFromCode(e.n), min: matchTime(m, pt.t).min, ev: e.id};
+    if (shot.sit === "penalty"){ shot.x = L - 11; shot.y = W/2; } if (pt.sid) m.shots = m.shots.filter(s => s.id !== pt.sid); m.shots.push(shot); pt.sid = shot.id; toast(`Tir placé · xG ${fmt1(xgOf(shot))}`, 1500); }
+  state.indPlace = null; state.iplDraft = null; persist(m); render(); }
+function indTouches(tags){ return tags.flatMap(e => (e.pts || []).filter(p => p.a === "TOUCHE" && p.x != null)); }
+function heatSVG(pts, color, print=false){
+  const pl = print ? pitchLines().replaceAll("var(--pitch-line)","#b9c6bb").replaceAll("var(--pitch-stripe)","#eef4ee").replaceAll("var(--pitch)","#f6faf6") : pitchLines();
+  const NX = 12, NY = 8, g = Array(NX*NY).fill(0); pts.forEach(p => { const i = Math.min(NX-1, Math.floor(p.x/L*NX)), j = Math.min(NY-1, Math.floor(p.y/W*NY)); g[j*NX+i]++; });
+  const mx = Math.max(1, ...g); let cells = "";
+  g.forEach((v, k) => { if (!v) return; const i = k % NX, j = Math.floor(k / NX); cells += `<rect x="${i*L/NX}" y="${j*W/NY}" width="${L/NX}" height="${W/NY}" fill="${color}" fill-opacity="${(.15 + .7*v/mx).toFixed(2)}"/>`; });
+  const dots = pts.map(p => `<circle cx="${p.x}" cy="${p.y}" r=".7" fill="#fff" stroke="${print ? "#0d1a3a" : "var(--ink)"}" stroke-width=".25"/>`).join("");
+  return `${svgOpen(`-2 -2 ${L+4} ${W+4}`)}${pl}${cells}${dots}</svg>`; }
+// Regrouper les séquences déjà codées d'un joueur : une ligne, chevauchements fusionnés (labels et points gardés)
+function indRegroup(m, bi){ const evs = m.events.filter(e => e.w === "i" && e.live && e.bi === bi && e.e != null).sort((a,b) => a.t - b.t); if (!evs.length) return 0;
+  let n = 0, cur = null; const gone = new Set();
+  evs.forEach(e => { e.one = 1;
+    if (cur && e.t <= cur.e){ cur.e = Math.max(cur.e, e.e); const seen = new Set((cur.l || []).map(l => (l.g || "") + "|" + l.t)); (e.l || []).forEach(l => { const k = (l.g || "") + "|" + l.t; if (!seen.has(k)){ seen.add(k); (cur.l = cur.l || []).push(l); } });
+      if (e.pts) cur.pts = [...(cur.pts || []), ...e.pts]; m.shots.forEach(s => { if (s.ev === e.id) s.ev = cur.id; }); gone.add(e.id); n++; }
+    else cur = e; });
+  m.events = m.events.filter(e => !gone.has(e.id)); return n; }
 // Stats simples en direct du joueur suivi (ou du dernier joueur codé)
 function cwLiveIndHTML(m){
   const evs = m.events.filter(e => e.w === "i" && e.pl);
-  const pb = state.indMode === "focus" && state.indPlayer != null ? CW_IND.b[state.indPlayer] : null;
+  const pb = indFocus() && state.indPlayer != null ? CW_IND.b[state.indPlayer] : null;
   const name = pb ? playerFromCode(pb.n) : (evs[evs.length - 1] || {}).pl; if (!name) return "";
   const ps = playerStats(m, name); const recups = ps.recups + ((ps.ind.RECUPERATION || {}).n || 0) + ((ps.ind.INTERCEPTION || {}).n || 0);
   return `<div style="margin-top:14px"><div class="eyebrow">${esc(name)} · en direct</div>
@@ -2890,6 +2946,8 @@ function exportSportscodeXML(m){
 document.addEventListener("click", async (evt) => {
   const b = evt.target.closest(".cw-b[data-cw]"); if (b){ if (evt.detail === 0) cwPress(Number(b.dataset.cw)); return; }
   const cd = evt.target.closest(".cdot"); if (cd && !evt.target.closest(".modal")){ const c = (current().corners || []).find(x => x.id === cd.dataset.cid); if (c) openCornerModal({...c, res:[...(c.res || [])]}); return; }
+  const ipsvg = evt.target.closest('svg[data-role="iplace"]');
+  if (ipsvg){ const pt = ipsvg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY; const q = pt.matrixTransform(ipsvg.getScreenCTM().inverse()); indPlaceAt(current(), Math.min(L, Math.max(0, q.x)), Math.min(W, Math.max(0, q.y))); return; }
   const lsvg = evt.target.closest('svg[data-role="cwloc"]');
   if (lsvg){
     const m = current(); const ev = m.events.find(e => e.id === lsvg.dataset.ev); if (!ev) return;
@@ -2918,6 +2976,10 @@ document.addEventListener("click", async (evt) => {
   else if (a === "cw-mode"){ state.cwMode = t.dataset.v; state.cwSel = null; state.cwEd = null; render(); }
   else if (a === "cw-names") openIndivNames();
   else if (a === "cw-style"){ state.settings = {...(state.settings || {}), cwStyle:t.dataset.v}; render(); if (S.db){ try { await S.db.doc("settings/app").set(state.settings); } catch {} } }
+  else if (a === "ipl-f"){ state.iplDraft = {...(state.iplDraft || {}), [t.dataset.f]: t.dataset.v}; render(); }
+  else if (a === "ipl-skip"){ state.indPlace = null; state.iplDraft = null; render(); }
+  else if (a === "ind-one"){ const bi = state.indPlayer; if (bi == null){ toast("Choisis d'abord le joueur."); return; } const b = CWB[bi];
+    confirmBox(`Regrouper les séquences de ${esc(b ? b.n : "ce joueur")} sur une seule ligne ? Celles qui se chevauchent sont fusionnées, tous les descripteurs sont gardés (Ctrl+Z pour annuler).`, "Regrouper", () => { const mm = current(); const body = JSON.parse(JSON.stringify(mm)); lastBackup[mm.id] = 0; backupMatch(body); const n = indRegroup(mm, bi); persist(mm); render(); toast(`Une ligne pour ${b ? b.n : "le joueur"}${n ? ` · ${n} séquence${n > 1 ? "s" : ""} fusionnée${n > 1 ? "s" : ""}` : ""}.`, 2500); }); }
   else if (a === "cw-indmode"){ state.indMode = t.dataset.v; state.cwSel = null; render(); }
   else if (a === "cwe-start"){ state.cwEdit = true; state.cwEd = null; render(); }
   else if (a === "cwe-done"){ state.cwEdit = false; state.cwEd = null; render(); toast("Fenêtre enregistrée.", 1500); }
@@ -3170,7 +3232,7 @@ document.addEventListener("submit", (evt) => { if (evt.target.id === "ai-form"){
 document.addEventListener("keydown", (evt) => { if (evt.target.id === "ai-input" && evt.key === "Enter" && !evt.shiftKey){ evt.preventDefault(); aiSend(evt.target.value); } });
 
 { const _r = render; render = function(){ _r(); vpSync(); }; }
-window.__vp = {VP, now: () => nowSec(current()), m: () => current(), clock: () => liveClock(current())};
+window.__vp = {st: () => state, VP, now: () => nowSec(current()), m: () => current(), clock: () => liveClock(current())};
 initStorage();
 })();
 </script>
