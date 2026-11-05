@@ -971,8 +971,8 @@ function playerList(m){
 function roster(m){ const s = new Set(playerList(m)); try { cwPlayers().forEach(b => s.add(playerFromCode(b.n))); } catch {} return [...s].filter(Boolean).sort((a,b) => a.localeCompare(b,"fr")); }
 function playerOptions(m, cur){ const r = roster(m); if (cur && !r.includes(cur)) r.unshift(cur); return `<option value="">— choisir le joueur —</option>` + r.map(p => `<option value="${esc(p)}" ${p === cur ? "selected" : ""}>${esc(p)}</option>`).join(""); }
 function playerStats(m, name){
-  const up = name.toUpperCase();
-  const tags = m.events.filter(e => e.pl && e.pl.toUpperCase() === up);
+  const up = name.toUpperCase(), nk = x => playerFromCode(x || "").toUpperCase(), upk = nk(name);
+  const tags = m.events.filter(e => e.pl && (e.pl.toUpperCase() === up || nk(e.pl) === upk)); const tagIds = new Set(tags.map(e => e.id));
   const tactical = teamEvents(m);
   const linked = new Map();
   for (const t of tactical){
@@ -984,7 +984,7 @@ function playerStats(m, name){
   const ev = [...linked.values()];
   const byAction = {};
   ev.forEach(e => { byAction[e.n] = (byAction[e.n]||0) + 1; });
-  const shots = m.shots.filter(s => s.tm === "us" && s.p && s.p.toUpperCase() === up);
+  const shots = m.shots.filter(s => s.tm === "us" && ((s.p && (s.p.toUpperCase() === up || nk(s.p) === upk)) || (s.ev && tagIds.has(s.ev))));
   const notes = {pos:0, ame:0, int:0}; const remarks = [];
   tags.forEach(t => { if (t.r) notes[t.r]++; const txt = String(t.rm||"").trim(); if (txt) remarks.push({r:t.r, txt, t:t.t}); });
   const zr = zoneCounts(m, "recup", () => ev), zp = zoneCounts(m, "perte", () => ev);
@@ -2093,8 +2093,9 @@ function reportHTML(m){
         <div class="col"><div class="box"><h4>Indicateurs</h4><div class="kg">
           <div><small>Actions</small><strong>${ps.actions}</strong></div><div><small>Récup.</small><strong>${ps.recups}</strong></div><div><small>Pertes</small><strong>${ps.pertes}</strong></div>
           <div><small>Positives</small><strong>${ps.notes.pos}</strong></div><div><small>À améliorer</small><strong>${ps.notes.ame}</strong></div><div><small>Intentions</small><strong>${ps.notes.int}</strong></div></div></div>
-          ${ps.indN ? `<div class="box"><h4>Codage indiv · ${ps.indN}</h4><table>${Object.values(ps.ind).sort((a,b) => b.n - a.n).slice(0,14).map(x => `<tr><td>${esc(x.k)}</td><td class="n">${x.n}</td><td class="n">${x.ok + x.ko ? Math.round(x.ok/(x.ok + x.ko)*100) + " %" : ""}</td></tr>`).join("")}</table></div>` : `<div class="box"><h4>Actions</h4><table>${actions.map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${v}</td></tr>`).join("") || "<tr><td>Aucune action liée</td></tr>"}</table></div>`}</div>
-        <div class="col"><div class="box"><h4>Tirs</h4>${shotMapSVG(m, {onlyUs:true, shots:ps.shots, print:true})}</div>${(ps.touches || []).length ? `<div class="box"><h4>Touches de balle · ${ps.touches.length}</h4>${heatSVG(ps.touches, usPrint(), true)}</div>` : ""}
+          ${ps.indN ? `<div class="box"><h4>Codage indiv · ${ps.indN}</h4><table>${Object.values(ps.ind).sort((a,b) => b.n - a.n).slice(0,14).map(x => `<tr><td>${esc(x.k)}</td><td class="n">${x.n}</td><td class="n">${x.ok + x.ko ? Math.round(x.ok/(x.ok + x.ko)*100) + " %" : ""}</td></tr>`).join("")}</table></div>` : `<div class="box"><h4>Actions</h4><table>${actions.map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${v}</td></tr>`).join("") || "<tr><td>Aucune action liée</td></tr>"}</table></div>`}
+          ${(ps.touches || []).length ? `<div class="box"><h4>Touches de balle · ${ps.touches.length}</h4>${heatSVG(ps.touches, usPrint(), true)}</div>` : ""}</div>
+        <div class="col"><div class="box"><h4>Tirs</h4>${shotMapSVG(m, {onlyUs:true, shots:ps.shots, print:true})}</div>
           ${ps.extra ? `<div class="box"><h4>Données importées</h4><table>${Object.entries(ps.extra).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${Number.isInteger(v)?v:fmt1(v)}</td></tr>`).join("")}</table></div>` : ""}</div>
         <div class="col"><div class="box"><h4>Récupérations</h4>${zoneGridSVG(ps.zr, usPrint(), {print:true})}</div><div class="box"><h4>Pertes</h4>${zoneGridSVG(ps.zp, opp, {print:true})}</div></div>
       </div>${foot}</div>`;
@@ -2345,6 +2346,8 @@ function cwPressInner(i){
       const had = (tgt.l || []).some(x => x.g === b.g && x.t === b.n);
       addLabel(tgt, b.g, b.n, true); labelled.push(tgt.id);
       if (focus && state.indMode === "one") tgt.one = 1;
+      // TIR / TOUCHE répétés sur la même séquence : chaque appui = un nouveau point à placer
+      const pk = had && tgt.w === "i" && indPtKind(b.n); if (pk){ (tgt.pts = tgt.pts || []).push({a: pk, t: nowSec(m)}); state.indPlace = {ev: tgt.id, i: tgt.pts.length - 1}; state.iplChain = false; state.iplDraft = null; }
       if (had) return;
       ev = tgt; // les labels liés (ex. PERDU → PERTE) s'ajoutent à la même action
     }
@@ -2767,11 +2770,14 @@ function indPlaceAt(m, x, y){ const p = state.indPlace, e = p && m.events.find(z
 function indTouches(tags){ return tags.flatMap(e => (e.pts || []).filter(p => p.a === "TOUCHE" && p.x != null)); }
 function heatSVG(pts, color, print=false){
   const pl = print ? pitchLines().replaceAll("var(--pitch-line)","#b9c6bb").replaceAll("var(--pitch-stripe)","#eef4ee").replaceAll("var(--pitch)","#f6faf6") : pitchLines();
-  const NX = 12, NY = 8, g = Array(NX*NY).fill(0); pts.forEach(p => { const i = Math.min(NX-1, Math.floor(p.x/L*NX)), j = Math.min(NY-1, Math.floor(p.y/W*NY)); g[j*NX+i]++; });
-  const mx = Math.max(1, ...g); let cells = "";
-  g.forEach((v, k) => { if (!v) return; const i = k % NX, j = Math.floor(k / NX); cells += `<rect x="${i*L/NX}" y="${j*W/NY}" width="${L/NX}" height="${W/NY}" fill="${color}" fill-opacity="${(.15 + .7*v/mx).toFixed(2)}"/>`; });
-  const dots = pts.map(p => `<circle cx="${p.x}" cy="${p.y}" r=".7" fill="#fff" stroke="${print ? "#0d1a3a" : "var(--ink)"}" stroke-width=".25"/>`).join("");
-  return `${svgOpen(`-2 -2 ${L+4} ${W+4}`)}${pl}${cells}${dots}</svg>`; }
+  // densité : nb de touches à moins de 9 m → couleur du vert (isolée) au rouge (zone très touchée)
+  const R = 9, dens = pts.map(p => pts.filter(q => Math.hypot(q.x - p.x, q.y - p.y) < R).length), mx = Math.max(1, ...dens);
+  const ramp = t => { const st = [[0,[46,170,90]],[.45,[245,200,40]],[.75,[245,120,30]],[1,[215,35,35]]]; let k = 1; while (k < st.length - 1 && t > st[k][0]) k++; const [a0,c0] = st[k-1], [a1,c1] = st[k], f = Math.max(0, Math.min(1, (t - a0)/(a1 - a0 || 1))); return `rgb(${c0.map((c,i) => Math.round(c + (c1[i]-c)*f)).join(",")})`; };
+  const fid = "hb" + Math.random().toString(36).slice(2,7);
+  const blobs = pts.map((p, i) => ({p, t: mx > 1 ? (dens[i]-1)/(mx-1) : 0})).sort((a,b) => a.t - b.t).map(({p, t}) => `<circle cx="${p.x}" cy="${p.y}" r="${(4.5 + 2.5*t).toFixed(1)}" fill="${ramp(t)}" fill-opacity=".45"/>`).join("");
+  const dots = pts.map((p, i) => `<circle cx="${p.x}" cy="${p.y}" r=".9" fill="${ramp(mx > 1 ? (dens[i]-1)/(mx-1) : 0)}" stroke="#fff" stroke-width=".3"/>`).join("");
+  const leg = `<g transform="translate(${L-30},${W+0.6})" font-size="2.2" fill="${print ? "#0d1a3a" : "var(--ink)"}"><defs><linearGradient id="${fid}g"><stop offset="0" stop-color="${ramp(0)}"/><stop offset=".45" stop-color="${ramp(.45)}"/><stop offset=".75" stop-color="${ramp(.75)}"/><stop offset="1" stop-color="${ramp(1)}"/></linearGradient></defs><text x="-1" y="1.7" text-anchor="end">peu</text><rect width="20" height="2" rx="1" fill="url(#${fid}g)"/><text x="21" y="1.7">beaucoup</text></g>`;
+  return `${svgOpen(`-2 -2 ${L+4} ${W+5.5}`)}<defs><filter id="${fid}" filterUnits="userSpaceOnUse" x="-2" y="-2" width="${L+4}" height="${W+4}"><feGaussianBlur stdDeviation="2.2"/></filter></defs>${pl}<g filter="url(#${fid})">${blobs}</g>${dots}${leg}</svg>`; }
 // Regrouper les séquences déjà codées d'un joueur : une ligne, chevauchements fusionnés (labels et points gardés)
 function indRegroup(m, bi){ const evs = m.events.filter(e => e.w === "i" && e.live && e.bi === bi && e.e != null).sort((a,b) => a.t - b.t); if (!evs.length) return 0;
   let n = 0, cur = null; const gone = new Set();
