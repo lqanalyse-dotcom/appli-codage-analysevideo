@@ -2090,7 +2090,7 @@ function reportHTML(m){
   if (state.view === "indiv" && state.player){
     const ps = state.scope === "season" ? mergeStats([...state.matches.values()].filter(x => (!x.sample || x.id === m.id) && playerList(x).includes(state.player)).map(x => playerStats(halfView(x), state.player))) : playerStats(m, state.player);
     const actions = Object.entries(ps.byAction).sort((a,b) => b[1]-a[1]).slice(0,14);
-    return `<div class="rpt">${head(`<div class="t">${esc(state.player)}</div><div class="m">${esc(TN())} · fiche individuelle</div>`,
+    return `<div class="rpt">${head(`${(() => { const ph = (state.players[slug(state.player)] || {}).photo; return ph ? `<img src="${blobUrl(ph)}" alt="" style="float:left;width:44px;height:44px;border-radius:50%;object-fit:cover;margin-right:10px;border:2px solid var(--rpt-acc,#f2c200)">` : ""; })()}<div class="t">${esc(state.player)}</div><div class="m">${esc(TN())} · fiche individuelle</div>`,
       `<div class="sc">${fmt1(ps.xg)}</div><div class="sx">xG · ${ps.shots.length} tirs · ${ps.goals} but${ps.goals>1?"s":""}</div>`,
       `<div class="t">${state.scope === "season" ? "Tous les matchs" : "vs " + esc(m.opponent || "Adversaire")}</div><div class="m">${esc(when)}</div>`)}
       <div class="rb">
