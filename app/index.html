@@ -2094,14 +2094,14 @@ function reportHTML(m){
       `<div class="sc">${fmt1(ps.xg)}</div><div class="sx">xG · ${ps.shots.length} tirs · ${ps.goals} but${ps.goals>1?"s":""}</div>`,
       `<div class="t">${state.scope === "season" ? "Tous les matchs" : "vs " + esc(m.opponent || "Adversaire")}</div><div class="m">${esc(when)}</div>`)}
       <div class="rb">
-        <div class="col"><div class="box"><h4>Indicateurs</h4><div class="kg">
+        ${(() => { const on = pdfOn, hasT = (ps.touches || []).length && on("i_touches"), tirsOn = on("i_tirs");
+          const tirS = `<div class="box"><h4>Tirs · ${ps.shots.length} · xG ${fmt1(ps.xg)}</h4><div style="max-width:62%;margin:0 auto">${shotMapSVG(m, {onlyUs:true, shots:ps.shots, print:true})}</div></div>`, tirB = `<div class="box"><h4>Tirs</h4>${shotMapSVG(m, {onlyUs:true, shots:ps.shots, print:true})}</div>`;
+          const c1 = (on("i_kpi") ? `<div class="box"><h4>Indicateurs</h4><div class="kg">
           <div><small>Actions</small><strong>${ps.actions}</strong></div><div><small>Récup.</small><strong>${ps.recups}</strong></div><div><small>Pertes</small><strong>${ps.pertes}</strong></div>
-          <div><small>Positives</small><strong>${ps.notes.pos}</strong></div><div><small>À améliorer</small><strong>${ps.notes.ame}</strong></div><div><small>Intentions</small><strong>${ps.notes.int}</strong></div>${ps.indN ? `<div><small>Séq. indiv</small><strong>${ps.indN}</strong></div><div><small>Réussite</small><strong>${ps.indOk + ps.indKo ? Math.round(ps.indOk/(ps.indOk + ps.indKo)*100) + " %" : "–"}</strong></div>` : ""}</div></div>
-          ${ps.indN ? `<div class="box"><h4>Codage indiv · ${ps.indN}</h4><table>${Object.values(ps.ind).sort((a,b) => b.n - a.n).slice(0,14).map(x => `<tr><td>${esc(x.k)}</td><td class="n">${x.n}</td><td class="n">${x.ok + x.ko ? Math.round(x.ok/(x.ok + x.ko)*100) + " %" : ""}</td></tr>`).join("")}</table></div>` : `<div class="box"><h4>Actions</h4><table>${actions.map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${v}</td></tr>`).join("") || "<tr><td>Aucune action liée</td></tr>"}</table></div>`}
-          ${(ps.touches || []).length ? `<div class="box"><h4>Tirs · ${ps.shots.length} · xG ${fmt1(ps.xg)}</h4><div style="max-width:62%;margin:0 auto">${shotMapSVG(m, {onlyUs:true, shots:ps.shots, print:true})}</div></div>` : ""}</div>
-        <div class="col">${(ps.touches || []).length ? `<div class="box"><h4>Touches de balle · ${ps.touches.length}</h4>${heatSVG(ps.touches, usPrint(), true)}</div>` : `<div class="box"><h4>Tirs</h4>${shotMapSVG(m, {onlyUs:true, shots:ps.shots, print:true})}</div>`}
-          ${ps.extra ? `<div class="box"><h4>Données importées</h4><table>${Object.entries(ps.extra).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${Number.isInteger(v)?v:fmt1(v)}</td></tr>`).join("")}</table></div>` : ""}</div>
-        <div class="col"><div class="box"><h4>Récupérations</h4>${zoneGridSVG(ps.zr, usPrint(), {print:true})}</div><div class="box"><h4>Pertes</h4>${zoneGridSVG(ps.zp, opp, {print:true})}</div></div>
+<div><small>Positives</small><strong>${ps.notes.pos}</strong></div><div><small>À améliorer</small><strong>${ps.notes.ame}</strong></div><div><small>Intentions</small><strong>${ps.notes.int}</strong></div>${ps.indN ? `<div><small>Séq. indiv</small><strong>${ps.indN}</strong></div><div><small>Réussite</small><strong>${ps.indOk + ps.indKo ? Math.round(ps.indOk/(ps.indOk + ps.indKo)*100) + " %" : "–"}</strong></div>` : ""}</div></div>` : "") + (on("i_codage") ? `${ps.indN ? `<div class="box"><h4>Codage indiv · ${ps.indN}</h4><table>${Object.values(ps.ind).sort((a,b) => b.n - a.n).slice(0,14).map(x => `<tr><td>${esc(x.k)}</td><td class="n">${x.n}</td><td class="n">${x.ok + x.ko ? Math.round(x.ok/(x.ok + x.ko)*100) + " %" : ""}</td></tr>`).join("")}</table></div>` : `<div class="box"><h4>Actions</h4><table>${actions.map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${v}</td></tr>`).join("") || "<tr><td>Aucune action liée</td></tr>"}</table></div>`}` : "") + (hasT && tirsOn ? tirS : "");
+          const c2 = (hasT ? `<div class="box"><h4>Touches de balle · ${ps.touches.length}</h4>${heatSVG(ps.touches, usPrint(), true)}</div>` : tirsOn ? tirB : "") + (on("i_extra") ? `${ps.extra ? `<div class="box"><h4>Données importées</h4><table>${Object.entries(ps.extra).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${Number.isInteger(v)?v:fmt1(v)}</td></tr>`).join("")}</table></div>` : ""}` : "");
+          const c3 = (on("recup") ? `<div class="box"><h4>Récupérations</h4>${zoneGridSVG(ps.zr, usPrint(), {print:true})}</div>` : "") + (on("perte") ? `<div class="box"><h4>Pertes</h4>${zoneGridSVG(ps.zp, opp, {print:true})}</div>` : "");
+          return [c1, c2, c3].map(c => `<div class="col">${c}</div>`).join(""); })()}
       </div>${foot}</div>`;
   }
   const rows = duelRows(m, st).slice(0, 16);
@@ -2127,6 +2127,7 @@ ${foot}</div>`;
 const PDF_PARTS = [["comparatif","Stats globales (comparatif)"],["bip","Ballon in play"],["tirs","Zones de tir"],["entrees","Entrées 20 m"],["recup","Récupérations"],["perte","Pertes"],["xg","xG cumulés"],["corners","Corners"]];
 function pdfOff(){ if (!state.pdfOff){ try { state.pdfOff = JSON.parse(localStorage.getItem("pdfOff") || "[]"); } catch { state.pdfOff = []; } } return state.pdfOff; }
 const pdfOn = k => !pdfOff().includes(k);
+const PDF_PARTS_IND = [["i_kpi","Indicateurs"],["i_codage","Codage indiv"],["i_touches","Touches de balle"],["i_tirs","Tirs"],["recup","Récupérations"],["perte","Pertes"],["i_extra","Données importées"]];
 function cornerPrintHTML(m, opp, big){
   const side = tm => { const list = (m.corners || []).filter(c => c.tm === tm), cs = cornerStats(list), color = tm === "us" ? usPrint() : opp;
     const svg = cornerMapSVG(list, color, true).replace(/viewBox="[^"]*"/, `viewBox="${L-30} ${big ? 4 : 12} 31 ${big ? W-8 : W-24}"`);
@@ -2136,7 +2137,7 @@ function cornerPrintHTML(m, opp, big){
 function openPdfPreview(){
   const m = current();
   const bg = modal(`<h3>PDF une page</h3><p class="hint">Aperçu du rapport ${state.view === "indiv" ? "individuel" : "collectif"} au format A4 paysage.</p>
-    ${state.view !== "indiv" ? `<div class="pdf-parts"><b>Afficher :</b>${PDF_PARTS.map(([k,l]) => `<label><input type="checkbox" data-part="${k}" ${pdfOn(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>` : ""}
+    ${true ? `<div class="pdf-parts"><b>Afficher :</b>${(state.view === "indiv" ? PDF_PARTS_IND : PDF_PARTS).map(([k,l]) => `<label><input type="checkbox" data-part="${k}" ${pdfOn(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>` : ""}
     <div class="preview-box"><div class="rpt-scale" id="rpt-holder">${reportHTML(m)}</div></div>
     <div class="actions"><button class="btn" data-x="no">Fermer</button><button class="btn primary" data-x="dl">Télécharger le PDF</button></div>`, "wide");
   const holder = bg.querySelector("#rpt-holder"), box = bg.querySelector(".preview-box");
