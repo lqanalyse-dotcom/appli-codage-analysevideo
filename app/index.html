@@ -398,6 +398,7 @@ select.f.sm{padding:3px 6px;font-size:12px}
 .rpt .d .bb{display:flex;height:6px;border-radius:3px;overflow:hidden;background:#eef1f7;gap:1px;margin-top:2px}
 .rpt .rf{display:flex;justify-content:space-between;padding:6px 18px;font-size:10px;color:#56618a;border-top:1px solid #d9deea}
 .rpt-scale .rb > .col > .box[draggable]{cursor:grab}
+.chip-x{border:0;background:transparent;color:#e5484d;font-weight:700;cursor:pointer;margin-left:4px;padding:0 2px;font-size:13px;line-height:1}
 .rpt .kg{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
 .rpt .kg div{background:#f5f7fb;border-radius:6px;padding:5px 7px}
 .rpt .kg small{display:block;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#56618a;font-weight:600}
@@ -2735,7 +2736,9 @@ function renderCodage(m){
       ${recent.length ? `<div class="cw-list">${recent.map(e => `<div class="cw-row" role="button" tabindex="0" data-act="cw-sel" data-id="${e.id}" aria-pressed="${state.cwSel===e.id}">
         <span class="tm">${clockLabel(m, pressTime(e))}</span>
         <div style="min-width:0"><span class="cw-code" style="background:${btnColor(e)};color:${inkOn(btnColor(e))}">${esc(e.n)}</span>${e.e == null ? ` <span class="pill good">en cours</span>` : e.e - e.t > 0 ? ` <span class="hint">${Math.round(e.e - e.t)} s</span>` : ""}
-          <div class="chips">${(e.l || []).filter(x => !/^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/.test(x.g)).map(x => `<span class="chip">${esc(x.g ? x.g + " : " : "")}${esc(x.t)}</span>`).join("")}</div></div>
+          <div class="chips">${(e.l || []).map((x, li) => [x, li]).filter(([x]) => !/^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/.test(x.g)).map(([x, li]) => `<span class="chip">${esc(x.g ? x.g + " : " : "")}${esc(x.t)}${state.cwSel === e.id ? `<button class="chip-x" data-act="cw-unlab" data-id="${e.id}" data-i="${li}" aria-label="Retirer ce label" title="Retirer ce label">×</button>` : ""}</span>`).join("")}</div>
+          ${e.w === "i" && (e.pts || []).length ? `<div class="chips" style="margin-top:4px">${e.pts.map((pt, pi) => `<button class="btn sm" data-act="cw-place" data-id="${e.id}" data-i="${pi}" title="${pt.x != null ? "Déjà placé : clique pour le déplacer" : "Placer sur le terrain"}">${pt.x != null ? "✓" : "📍"} ${pt.a === "TIR" ? "Tir" : "Touche"}${pt.x != null ? " placé" + (pt.a === "TIR" ? "" : "e") : " à placer"}</button>`).join("")}</div>` : ""}
+          ${state.cwSel === e.id ? `<div class="hint" style="margin-top:4px">Clique × sur un label pour le retirer, ou un bouton de la fenêtre pour en ajouter.</div>` : ""}</div>
         <button class="btn sm danger" data-act="cw-del" data-id="${e.id}" aria-label="Supprimer">×</button></div>`).join("")}</div>` : `<div class="empty">Aucune action codée. Lance le chrono puis clique sur les boutons ou utilise les raccourcis.</div>`}
     </section>
     ${CWK === "i" ? `<section class="panel c5"><div class="ph"><h2>Bilan indiv du match</h2><span class="sub">clique un joueur pour sa fiche</span></div>${indivSummaryHTML(m)}${cwLiveIndHTML(m)}<p class="hint" style="margin-top:8px">Ces chiffres alimentent le rapport Indiv et son PDF.</p></section>` : `<section class="panel c5 ${toPlace ? "cw-float " + (state.cwFloat || "") : ""}">${toPlace ? (() => { const same = live.filter(e => e.n === toPlace.n).sort((a,b) => a.t - b.t); const no = same.findIndex(e => e.id === toPlace.id) + 1;
@@ -3046,8 +3049,16 @@ document.addEventListener("click", async (evt) => {
   else if (a === "tl-back"){ const c = liveClock(m); tlMoveTo(m, nowSec(m) - (c.shift || 0)); c.shift = 0; persist(m); render(); toast("Curseur remis à sa place.", 1500); }
   else if (a === "tl-last"){ const live = m.events.filter(e => e.live && inWin(e)); if (!live.length){ toast("Aucune séquence codée."); return; } tlMoveTo(m, Math.max(...live.map(e => e.e ?? e.t)), true); persist(m); render(); }
   else if (a === "tl-follow"){ state.tlFollow = state.tlFollow === false; render(); }
-  else if (a === "cw-sel"){ if (evt.target.closest('[data-act="cw-del"]')) return; if (state.tlDragged){ state.tlDragged = false; return; }
-    tlSelect(t.dataset.id, evt.shiftKey || evt.ctrlKey || evt.metaKey); }
+  else if (a === "cw-unlab"){ const e = m.events.find(z => z.id === t.dataset.id), i = +t.dataset.i; if (!e || !(e.l || [])[i]) return; const lab = e.l[i]; e.l.splice(i, 1);
+    // le point TIR / TOUCHE n'a plus lieu d'être si plus aucun label ne le porte
+    const ks = indKinds(e); if (e.pts){ e.pts.filter(pt => !ks.has(pt.a)).forEach(pt => { if (pt.sid) m.shots = m.shots.filter(s => s.id !== pt.sid); }); e.pts = e.pts.filter(pt => ks.has(pt.a)); if (state.indPlace && state.indPlace.ev === e.id) state.indPlace = null; }
+    persist(m); render(); toast(`Label « ${lab.g ? lab.g + " : " : ""}${lab.t} » retiré (Ctrl+Z pour annuler).`, 2000); }
+  else if (a === "cw-place"){ const e = m.events.find(z => z.id === t.dataset.id), i = +t.dataset.i, pt = e && (e.pts || [])[i]; if (!pt) return;
+    state.indPlace = {ev: e.id, i}; state.iplChain = false; state.iplDraft = null; render(); toast(pt.x != null ? `${pt.a === "TIR" ? "Tir déjà placé" : "Touche déjà placée"} : clique le terrain pour la déplacer.` : "Clique l'endroit sur le terrain.", 2000); }
+  else if (a === "cw-sel"){ if (evt.target.closest('[data-act="cw-del"],[data-act="cw-unlab"],[data-act="cw-place"]')) return; if (state.tlDragged){ state.tlDragged = false; return; }
+    tlSelect(t.dataset.id, evt.shiftKey || evt.ctrlKey || evt.metaKey);
+    const se = m.events.find(z => z.id === t.dataset.id); if (se && se.w === "i"){ indSyncPts(m); const pts = se.pts || [], done = pts.filter(x => x.x != null), todo = pts.filter(x => x.x == null);
+      if (pts.length) toast(todo.length ? `${todo.length} ${todo.length > 1 ? "points" : "point"} à placer (${todo.map(x => x.a === "TIR" ? "tir" : "touche").join(", ")}) : clique 📍 sur la séquence.` : `Déjà placé : ${done.map(x => x.a === "TIR" ? "tir" : "touche").join(", ")}. Clique ✓ pour déplacer.`, 2600); render(); } }
   else if (a === "tl-merge"){ const n = tlMerge(m, tlSelIds(m)); persist(m); render(); toast(n ? `${n} chevauchement${n > 1 ? "s" : ""} fusionné${n > 1 ? "s" : ""}.` : "Aucun chevauchement.", 1800); }
   else if (a === "tl-shift"){ const d = Number(($("#tl-shift-s") || {}).value) || 0; if (!d){ toast("Indique un nombre de secondes."); return; } tlShift(m, tlSelIds(m), d*Number(t.dataset.dir)); persist(m); render(); }
   else if (a === "tl-ren"){ evt.stopPropagation(); tlRename(m, t.dataset.k); }
