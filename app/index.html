@@ -988,9 +988,12 @@ function playerStats(m, name){
   const notes = {pos:0, ame:0, int:0}; const remarks = [];
   tags.forEach(t => { if (t.r) notes[t.r]++; const txt = String(t.rm||"").trim(); if (txt) remarks.push({r:t.r, txt, t:t.t}); });
   const zr = zoneCounts(m, "recup", () => ev), zp = zoneCounts(m, "perte", () => ev);
-  return {name, tags:tags.length, ev, byAction, shots, notes, remarks, zr, zp, ind: indivBreakdown(tags), indN: tags.filter(t => t.w === "i").length, touches: indTouches(tags),
+  // bilan du codage indiv (même calcul que « Bilan indiv du match ») : récup./pertes codées en indiv comptent aussi
+  const ind = indivBreakdown(tags), indN = re => Object.values(ind).filter(x => !x.k.includes(" : ") && re.test(x.k)).reduce((a,x) => a + x.n, 0);
+  return {name, tags:tags.length, ev, byAction, shots, notes, remarks, zr, zp, ind, indN: tags.filter(t => t.w === "i").length, touches: indTouches(tags),
     actions: ev.length, xg: shots.reduce((a,s) => a + xgOf(s), 0), goals: shots.filter(s => s.res === "but").length + ev.filter(e => e.k === "BUT" && e.tm === "us").length,
-    recups: ev.filter(e => e.k === "RECUP" && e.tm === "us").length, pertes: ev.filter(e => e.k === "PERTE" && e.tm === "us").length,
+    recups: ev.filter(e => e.k === "RECUP" && e.tm === "us").length + indN(/RECUP|INTERCEPT/), pertes: ev.filter(e => e.k === "PERTE" && e.tm === "us").length + indN(/PERTE|PERDU/),
+    indOk: Object.values(ind).reduce((a,x) => a + x.ok, 0), indKo: Object.values(ind).reduce((a,x) => a + x.ko, 0),
     extra: (m.perPlayer || {})[name] || null};
 }
 // Bilan du codage indiv d'un joueur : action (label sans groupe) + résultat (labels liés à l'action, ex. RESULT PASSE → PASSE)
@@ -1013,7 +1016,7 @@ function mergeStats(list){
     zr:{counts:Object.fromEntries(ZONES.map(z=>[z,0])), tagged:0, total:0, bands:{}}, zp:{counts:Object.fromEntries(ZONES.map(z=>[z,0])), tagged:0, total:0, bands:{}}, extra:null, matches:list.length};
   for (const s of list){
     out.indN += s.indN || 0; for (const k in (s.ind || {})){ const r = out.ind[k] = out.ind[k] || {k, n:0, ok:0, ko:0, side:s.ind[k].side}; r.n += s.ind[k].n; r.ok += s.ind[k].ok; r.ko += s.ind[k].ko; }
-    out.tags += s.tags; out.actions += s.actions; out.xg += s.xg; out.goals += s.goals; out.recups += s.recups; out.pertes += s.pertes;
+    out.tags += s.tags; out.actions += s.actions; out.xg += s.xg; out.goals += s.goals; out.recups += s.recups; out.pertes += s.pertes; out.indOk = (out.indOk || 0) + (s.indOk || 0); out.indKo = (out.indKo || 0) + (s.indKo || 0);
     out.shots.push(...s.shots); (out.touches = out.touches || []).push(...(s.touches || [])); s.remarks.forEach(r => out.remarks.push(r));
     for (const k in s.byAction) out.byAction[k] = (out.byAction[k]||0) + s.byAction[k];
     for (const k in s.notes) out.notes[k] += s.notes[k];
@@ -1650,6 +1653,7 @@ function renderIndiv(m){
         <div class="kpi"><div class="k">xG</div><div class="v">${fmt1(ps.xg)}</div><div class="s">${ps.goals} but${ps.goals>1?"s":""}</div></div>
         <div class="kpi"><div class="k">Récupérations</div><div class="v">${ps.recups}</div></div>
         <div class="kpi"><div class="k">Pertes</div><div class="v">${ps.pertes}</div></div>
+        ${ps.indN ? `<div class="kpi"><div class="k">Séquences indiv</div><div class="v">${ps.indN}</div></div><div class="kpi"><div class="k">Réussite indiv</div><div class="v">${ps.indOk + ps.indKo ? Math.round(ps.indOk/(ps.indOk + ps.indKo)*100) + " %" : "–"}</div><div class="s">${ps.indOk} réussie${ps.indOk>1?"s":""} · ${ps.indKo} ratée${ps.indKo>1?"s":""}</div></div>` : ""}
         <div class="kpi"><div class="k">Bilan récup / perte</div><div class="v">${ps.recups - ps.pertes > 0 ? "+" : ""}${ps.recups - ps.pertes}</div></div>
       </div>
       ${notesTot ? `<div style="margin-top:14px"><div class="eyebrow">Évaluation des séquences</div>
@@ -2092,10 +2096,10 @@ function reportHTML(m){
       <div class="rb">
         <div class="col"><div class="box"><h4>Indicateurs</h4><div class="kg">
           <div><small>Actions</small><strong>${ps.actions}</strong></div><div><small>Récup.</small><strong>${ps.recups}</strong></div><div><small>Pertes</small><strong>${ps.pertes}</strong></div>
-          <div><small>Positives</small><strong>${ps.notes.pos}</strong></div><div><small>À améliorer</small><strong>${ps.notes.ame}</strong></div><div><small>Intentions</small><strong>${ps.notes.int}</strong></div></div></div>
+          <div><small>Positives</small><strong>${ps.notes.pos}</strong></div><div><small>À améliorer</small><strong>${ps.notes.ame}</strong></div><div><small>Intentions</small><strong>${ps.notes.int}</strong></div>${ps.indN ? `<div><small>Séq. indiv</small><strong>${ps.indN}</strong></div><div><small>Réussite</small><strong>${ps.indOk + ps.indKo ? Math.round(ps.indOk/(ps.indOk + ps.indKo)*100) + " %" : "–"}</strong></div>` : ""}</div></div>
           ${ps.indN ? `<div class="box"><h4>Codage indiv · ${ps.indN}</h4><table>${Object.values(ps.ind).sort((a,b) => b.n - a.n).slice(0,14).map(x => `<tr><td>${esc(x.k)}</td><td class="n">${x.n}</td><td class="n">${x.ok + x.ko ? Math.round(x.ok/(x.ok + x.ko)*100) + " %" : ""}</td></tr>`).join("")}</table></div>` : `<div class="box"><h4>Actions</h4><table>${actions.map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${v}</td></tr>`).join("") || "<tr><td>Aucune action liée</td></tr>"}</table></div>`}
-          ${(ps.touches || []).length ? `<div class="box"><h4>Touches de balle · ${ps.touches.length}</h4>${heatSVG(ps.touches, usPrint(), true)}</div>` : ""}</div>
-        <div class="col"><div class="box"><h4>Tirs</h4>${shotMapSVG(m, {onlyUs:true, shots:ps.shots, print:true})}</div>
+          ${(ps.touches || []).length ? `<div class="box"><h4>Tirs · ${ps.shots.length} · xG ${fmt1(ps.xg)}</h4><div style="max-width:62%;margin:0 auto">${shotMapSVG(m, {onlyUs:true, shots:ps.shots, print:true})}</div></div>` : ""}</div>
+        <div class="col">${(ps.touches || []).length ? `<div class="box"><h4>Touches de balle · ${ps.touches.length}</h4>${heatSVG(ps.touches, usPrint(), true)}</div>` : `<div class="box"><h4>Tirs</h4>${shotMapSVG(m, {onlyUs:true, shots:ps.shots, print:true})}</div>`}
           ${ps.extra ? `<div class="box"><h4>Données importées</h4><table>${Object.entries(ps.extra).map(([k,v]) => `<tr><td>${esc(k)}</td><td class="n">${Number.isInteger(v)?v:fmt1(v)}</td></tr>`).join("")}</table></div>` : ""}</div>
         <div class="col"><div class="box"><h4>Récupérations</h4>${zoneGridSVG(ps.zr, usPrint(), {print:true})}</div><div class="box"><h4>Pertes</h4>${zoneGridSVG(ps.zp, opp, {print:true})}</div></div>
       </div>${foot}</div>`;
@@ -2710,7 +2714,7 @@ function renderCodage(m){
           <div class="chips">${(e.l || []).filter(x => !/^(COMPETITION|JOURNEE|LIEU|EQUIPE|ADV|Halftime|QT|Minute)$/.test(x.g)).map(x => `<span class="chip">${esc(x.g ? x.g + " : " : "")}${esc(x.t)}</span>`).join("")}</div></div>
         <button class="btn sm danger" data-act="cw-del" data-id="${e.id}" aria-label="Supprimer">×</button></div>`).join("")}</div>` : `<div class="empty">Aucune action codée. Lance le chrono puis clique sur les boutons ou utilise les raccourcis.</div>`}
     </section>
-    ${CWK === "i" ? `<section class="panel c5"><div class="ph"><h2>Bilan indiv du match</h2><span class="sub">clique un joueur pour sa fiche</span></div>${indivSummaryHTML(m)}${cwLiveIndHTML(m)}</section>` : `<section class="panel c5 ${toPlace ? "cw-float " + (state.cwFloat || "") : ""}">${toPlace ? (() => { const same = live.filter(e => e.n === toPlace.n).sort((a,b) => a.t - b.t); const no = same.findIndex(e => e.id === toPlace.id) + 1;
+    ${CWK === "i" ? `<section class="panel c5"><div class="ph"><h2>Bilan indiv du match</h2><span class="sub">clique un joueur pour sa fiche</span></div>${indivSummaryHTML(m)}${cwLiveIndHTML(m)}<p class="hint" style="margin-top:8px">Ces chiffres alimentent le rapport Indiv et son PDF.</p></section>` : `<section class="panel c5 ${toPlace ? "cw-float " + (state.cwFloat || "") : ""}">${toPlace ? (() => { const same = live.filter(e => e.n === toPlace.n).sort((a,b) => a.t - b.t); const no = same.findIndex(e => e.id === toPlace.id) + 1;
       return `<div class="cw-float-bar"><b>${esc(toPlace.k === "RECUP" ? "RÉCUP" : toPlace.k)} N°${no}</b><span class="hint">${esc(toPlace.n)} · ${clockLabel(m, pressTime(toPlace))} · ${no}/${same.length}</span><span style="flex:1"></span>
         <button class="btn sm" data-act="cw-float" data-v="${state.cwFloat === "min" ? "" : "min"}" aria-label="${state.cwFloat === "min" ? "Rouvrir" : "Réduire"}">${state.cwFloat === "min" ? "▴" : "▾"}</button><button class="btn sm" data-act="cw-float" data-v="${state.cwFloat === "big" ? "" : "big"}" aria-label="${state.cwFloat === "big" ? "Taille normale" : "Agrandir"}">${state.cwFloat === "big" ? "⤡" : "⤢"}</button></div>`; })() : ""}<div class="ph"><h2>${isLoc ? (toPlace.k === "RECUP" ? "Position de la récupération" : "Position de la perte") : "Position des tirs"}</h2><span class="sub">${isLoc ? "terrain 18 zones" : "pour le xG"}</span></div>
       ${isLoc ? `<p style="margin:0 0 8px"><span class="cw-code" style="background:${btnColor(toPlace)};color:${inkOn(btnColor(toPlace))}">${esc(toPlace.n)}</span> à ${mmss(pressTime(toPlace))} : clique l'endroit exact${toPlace.b ? ` (zone codée : ${esc(toPlace.b)})` : ""}. ${esc(TS())} attaque vers la droite.</p>
@@ -2770,13 +2774,13 @@ function indPlaceAt(m, x, y){ const p = state.indPlace, e = p && m.events.find(z
 function indTouches(tags){ return tags.flatMap(e => (e.pts || []).filter(p => p.a === "TOUCHE" && p.x != null)); }
 function heatSVG(pts, color, print=false){
   const pl = print ? pitchLines().replaceAll("var(--pitch-line)","#b9c6bb").replaceAll("var(--pitch-stripe)","#eef4ee").replaceAll("var(--pitch)","#f6faf6") : pitchLines();
-  // densité : nb de touches à moins de 9 m → couleur du vert (isolée) au rouge (zone très touchée)
+  // densité : nb de touches à moins de 9 m → vert (1) au rouge (6 et plus = beaucoup, demandé par l'utilisateur)
   const R = 9, dens = pts.map(p => pts.filter(q => Math.hypot(q.x - p.x, q.y - p.y) < R).length), mx = Math.max(1, ...dens);
   const ramp = t => { const st = [[0,[46,170,90]],[.45,[245,200,40]],[.75,[245,120,30]],[1,[215,35,35]]]; let k = 1; while (k < st.length - 1 && t > st[k][0]) k++; const [a0,c0] = st[k-1], [a1,c1] = st[k], f = Math.max(0, Math.min(1, (t - a0)/(a1 - a0 || 1))); return `rgb(${c0.map((c,i) => Math.round(c + (c1[i]-c)*f)).join(",")})`; };
   const fid = "hb" + Math.random().toString(36).slice(2,7);
-  const blobs = pts.map((p, i) => ({p, t: mx > 1 ? (dens[i]-1)/(mx-1) : 0})).sort((a,b) => a.t - b.t).map(({p, t}) => `<circle cx="${p.x}" cy="${p.y}" r="${(4.5 + 2.5*t).toFixed(1)}" fill="${ramp(t)}" fill-opacity=".45"/>`).join("");
-  const dots = pts.map((p, i) => `<circle cx="${p.x}" cy="${p.y}" r=".9" fill="${ramp(mx > 1 ? (dens[i]-1)/(mx-1) : 0)}" stroke="#fff" stroke-width=".3"/>`).join("");
-  const leg = `<g transform="translate(${L-30},${W+0.6})" font-size="2.2" fill="${print ? "#0d1a3a" : "var(--ink)"}"><defs><linearGradient id="${fid}g"><stop offset="0" stop-color="${ramp(0)}"/><stop offset=".45" stop-color="${ramp(.45)}"/><stop offset=".75" stop-color="${ramp(.75)}"/><stop offset="1" stop-color="${ramp(1)}"/></linearGradient></defs><text x="-1" y="1.7" text-anchor="end">peu</text><rect width="20" height="2" rx="1" fill="url(#${fid}g)"/><text x="21" y="1.7">beaucoup</text></g>`;
+  const blobs = pts.map((p, i) => ({p, t: Math.min(1, (dens[i]-1)/5)})).sort((a,b) => a.t - b.t).map(({p, t}) => `<circle cx="${p.x}" cy="${p.y}" r="${(4.5 + 2.5*t).toFixed(1)}" fill="${ramp(t)}" fill-opacity=".45"/>`).join("");
+  const dots = pts.map((p, i) => `<circle cx="${p.x}" cy="${p.y}" r=".9" fill="${ramp(Math.min(1, (dens[i]-1)/5))}" stroke="#fff" stroke-width=".3"/>`).join("");
+  const leg = `<g transform="translate(${L-36},${W+0.6})" font-size="2.2" fill="${print ? "#0d1a3a" : "var(--ink)"}"><defs><linearGradient id="${fid}g"><stop offset="0" stop-color="${ramp(0)}"/><stop offset=".45" stop-color="${ramp(.45)}"/><stop offset=".75" stop-color="${ramp(.75)}"/><stop offset="1" stop-color="${ramp(1)}"/></linearGradient></defs><text x="-1" y="1.7" text-anchor="end">1 touche</text><rect width="20" height="2" rx="1" fill="url(#${fid}g)"/><text x="21" y="1.7">6+ (beaucoup)</text></g>`;
   return `${svgOpen(`-2 -2 ${L+4} ${W+5.5}`)}<defs><filter id="${fid}" filterUnits="userSpaceOnUse" x="-2" y="-2" width="${L+4}" height="${W+4}"><feGaussianBlur stdDeviation="2.2"/></filter></defs>${pl}<g filter="url(#${fid})">${blobs}</g>${dots}${leg}</svg>`; }
 // Regrouper les séquences déjà codées d'un joueur : une ligne, chevauchements fusionnés (labels et points gardés)
 function indRegroup(m, bi){ const evs = m.events.filter(e => e.w === "i" && e.live && e.bi === bi && e.e != null).sort((a,b) => a.t - b.t); if (!evs.length) return 0;
@@ -2791,7 +2795,7 @@ function cwLiveIndHTML(m){
   const evs = m.events.filter(e => e.w === "i" && e.pl);
   const pb = indFocus() && state.indPlayer != null ? CW_IND.b[state.indPlayer] : null;
   const name = pb ? playerFromCode(pb.n) : (evs[evs.length - 1] || {}).pl; if (!name) return "";
-  const ps = playerStats(m, name); const recups = ps.recups + ((ps.ind.RECUPERATION || {}).n || 0) + ((ps.ind.INTERCEPTION || {}).n || 0);
+  const ps = playerStats(m, name); const recups = ps.recups;
   return `<div style="margin-top:14px"><div class="eyebrow">${esc(name)} · en direct</div>
     <div class="cw-kpis"><div><b>${ps.indN}</b><span>séquences</span></div><div><b>${recups}</b><span>récup.</span></div><div><b>${ps.shots.length}</b><span>tirs</span></div><div><b>${fmt1(ps.xg)}</b><span>xG</span></div></div>
     ${Object.keys(ps.ind).length ? indivTableHTML(ps.ind) : `<div class="hint">Pas encore d'action codée pour ce joueur.</div>`}</div>`;
