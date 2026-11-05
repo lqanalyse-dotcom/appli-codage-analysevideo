@@ -397,6 +397,7 @@ select.f.sm{padding:3px 6px;font-size:12px}
 .rpt .d .l{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;text-align:center;color:#56618a;font-weight:600}
 .rpt .d .bb{display:flex;height:6px;border-radius:3px;overflow:hidden;background:#eef1f7;gap:1px;margin-top:2px}
 .rpt .rf{display:flex;justify-content:space-between;padding:6px 18px;font-size:10px;color:#56618a;border-top:1px solid #d9deea}
+.rpt-scale .rb > .col > .box[draggable]{cursor:grab}
 .rpt .kg{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
 .rpt .kg div{background:#f5f7fb;border-radius:6px;padding:5px 7px}
 .rpt .kg small{display:block;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#56618a;font-weight:600}
@@ -2081,7 +2082,25 @@ function openImportModal(results, fromDocId){
 /* =========================================================
    Rapport PDF une page (A4 paysage)
    ========================================================= */
-function reportHTML(m){
+// Disposition du PDF modifiable : l'utilisateur glisse les blocs (.col > .box) dans l'aperçu ; ordre gardé par type de rapport
+const pdfBoxKey = b => ((b.querySelector("h4") || {}).textContent || "").split("·")[0].replace(/[\d,.%]+/g, "").trim().toUpperCase();
+function pdfLayoutGet(){ try { return JSON.parse(localStorage.getItem("pdfLayout") || "{}"); } catch { return {}; } }
+function pdfLayout(html){ const v = state.view === "indiv" ? "indiv" : "col", lay = pdfLayoutGet()[v];
+  const t = document.createElement("template"); t.innerHTML = html; const cols = [...t.content.querySelectorAll(".rb > .col")]; if (!cols.length) return html;
+  const boxes = cols.flatMap((c, ci) => [...c.children].filter(b => b.classList.contains("box")).map(b => (b.dataset.bk = pdfBoxKey(b), b.dataset.c0 = ci, b)));
+  if (lay){ const used = new Set(); lay.forEach((keys, ci) => { if (!cols[ci]) return; keys.forEach(k => { const b = boxes.find(x => x.dataset.bk === k && !used.has(x)); if (b){ used.add(b); cols[ci].appendChild(b); } }); });
+    boxes.filter(b => !used.has(b)).forEach(b => cols[+b.dataset.c0].appendChild(b)); }
+  boxes.forEach(b => b.setAttribute("draggable", "true")); const d = document.createElement("div"); d.appendChild(t.content); return d.innerHTML; }
+function pdfDnD(holder, rerender){ let drag = null;
+  holder.addEventListener("dragstart", e => { drag = e.target.closest && e.target.closest(".rb > .col > .box"); if (drag){ drag.style.opacity = .4; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", "x"); } catch {} } });
+  holder.addEventListener("dragend", () => { if (drag) drag.style.opacity = ""; drag = null; });
+  holder.addEventListener("dragover", e => { if (drag && e.target.closest(".rb > .col")) e.preventDefault(); });
+  holder.addEventListener("drop", e => { const col = drag && e.target.closest(".rb > .col"); if (!col) return; e.preventDefault();
+    const over = e.target.closest(".rb > .col > .box"); if (over && over !== drag){ const r = over.getBoundingClientRect(); col.insertBefore(drag, e.clientY > r.top + r.height/2 ? over.nextSibling : over); } else if (!over) col.appendChild(drag);
+    const all = pdfLayoutGet(); all[state.view === "indiv" ? "indiv" : "col"] = [...holder.querySelectorAll(".rb > .col")].map(c => [...c.children].filter(b => b.dataset && b.dataset.bk).map(b => b.dataset.bk));
+    try { localStorage.setItem("pdfLayout", JSON.stringify(all)); } catch {} rerender(); }); }
+function reportHTML(m){ return pdfLayout(reportHTML0(m)); }
+function reportHTML0(m){
   m = halfView(m);
   const st = teamStats(m), opp = themCol(m);
   const when = [m.competition, m.date ? new Date(m.date).toLocaleDateString("fr-FR") : ""].filter(Boolean).join(" · ");
@@ -2139,6 +2158,7 @@ function openPdfPreview(){
   const m = current();
   const bg = modal(`<h3>PDF une page</h3><p class="hint">Aperçu du rapport ${state.view === "indiv" ? "individuel" : "collectif"} au format A4 paysage.</p>
     ${true ? `<div class="pdf-parts"><b>Afficher :</b>${(state.view === "indiv" ? PDF_PARTS_IND : PDF_PARTS).map(([k,l]) => `<label><input type="checkbox" data-part="${k}" ${pdfOn(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>` : ""}
+    <p class="hint" style="margin:4px 0">Glisse un bloc de l'aperçu pour le déplacer (dans sa colonne ou vers une autre). <button class="btn sm" data-x="lay0">Disposition d'origine</button></p>
     <div class="preview-box"><div class="rpt-scale" id="rpt-holder">${reportHTML(m)}</div></div>
     <div class="actions"><button class="btn" data-x="no">Fermer</button><button class="btn primary" data-x="dl">Télécharger le PDF</button></div>`, "wide");
   const holder = bg.querySelector("#rpt-holder"), box = bg.querySelector(".preview-box");
@@ -2146,6 +2166,8 @@ function openPdfPreview(){
   fit(); window.addEventListener("resize", fit, {once:true});
   bg.addEventListener("change", e => { const k = e.target.dataset.part; if (!k) return; state.pdfOff = e.target.checked ? pdfOff().filter(x => x !== k) : [...pdfOff(), k];
     try { localStorage.setItem("pdfOff", JSON.stringify(state.pdfOff)); } catch {} holder.innerHTML = reportHTML(m); });
+  pdfDnD(holder, () => { holder.innerHTML = reportHTML(m); });
+  bg.querySelector('[data-x="lay0"]').onclick = () => { const all = pdfLayoutGet(); delete all[state.view === "indiv" ? "indiv" : "col"]; try { localStorage.setItem("pdfLayout", JSON.stringify(all)); } catch {} holder.innerHTML = reportHTML(m); };
   bg.querySelector('[data-x="no"]').onclick = () => bg.remove();
   bg.querySelector('[data-x="dl"]').onclick = async (e) => {
     const btn = e.currentTarget; btn.disabled = true; btn.textContent = "Génération…";
