@@ -2957,6 +2957,25 @@ function vpAttach(closed){ const d = VP.panel, v = VP.el, w = VP.win; if (!w) re
   v.currentTime = t; if (playing) setTimeout(() => v.play().catch(() => {}), 150); if (!closed){ try { w.close(); } catch {} } vpSync(); }
 // Export LongoMatch : le nom de l'action = le code seul (une ligne par code) ; les descripteurs vont seulement dans la remarque (LongoMatch les colle sinon au nom)
 // Calage vidéo : temps du coup d'envoi de chaque MT dans la vidéo source ; la pause de mi-temps est « gelée » dans l'appli
+async function xmlDo(m, lm){
+    const xml = lm ? exportLongoMatchXML(m) : exportSportscodeXML(m); const base = "codage-" + slug(m.opponent || m.title) + (state.xmlHalf ? "-mt" + state.xmlHalf : "") + (lm ? "-longomatch" : "");
+    if (!S.downloads){ await saveFile(base + ".xml", xml); return; }
+    try { await S.downloads.save({filename: base + ".xml", data: xml}); }
+    catch (e){ if (e && e.code === "rejected_extension"){ if (await saveFile(base + ".xml.txt", xml)) toast("Enregistré en .xml.txt : retire le .txt avant de l'ouvrir dans Sportscode.", 5000); } else if (e && e.code !== "declined") toast("Export impossible : " + (e.message || "")); }
+}
+function openXmlCalib(m, go){ const v = m.video || {}, k2 = k2At(liveClock(m)), v1 = v.v1 ?? 0, v2 = v.v2 ?? (v1 + k2 + 15*60);
+  const hms = x => x >= 3600 ? Math.floor(x/3600) + ":" + mmss(x % 3600) : mmss(x);
+  const bg = modal(`<h3>Calage sur la vidéo</h3><p class="hint">Pour que la 2e mi-temps tombe juste dans la vidéo, indique à quel moment de ta vidéo a lieu chaque coup d'envoi (mm:ss ou h:mm:ss). Toutes les séquences de 2e MT sont décalées de la durée de la pause.</p>
+    <div class="row"><label class="l" for="xc-v1">Coup d'envoi 1re MT dans la vidéo</label><input class="f" id="xc-v1" value="${hms(v1)}"></div>
+    <div class="row"><label class="l" for="xc-v2">Coup d'envoi 2e MT dans la vidéo</label><input class="f" id="xc-v2" value="${hms(v2)}"></div>
+    <p class="hint" id="xc-info"></p>
+    <div class="actions"><button class="btn" data-x="no">Annuler</button><button class="btn primary" data-x="ok">Exporter</button></div>`);
+  const rd = () => [parseMmss(bg.querySelector("#xc-v1").value), parseMmss(bg.querySelector("#xc-v2").value)];
+  const info = () => { const [a, b] = rd(); bg.querySelector("#xc-info").textContent = a != null && b != null ? `1re MT codée : ${mmss(k2)} · pause dans la vidéo : ${mmss(Math.max(0, b - a - k2))}.` : "Format attendu : mm:ss"; };
+  bg.addEventListener("input", info); info();
+  bg.querySelector('[data-x="no"]').onclick = () => bg.remove();
+  bg.querySelector('[data-x="ok"]').onclick = () => { const [a, b] = rd(); if (a == null || b == null){ toast("Format attendu : mm:ss (ex. 1:02:30)."); return; } if (b < a + k2 - 1){ toast("Le coup d'envoi de la 2e MT doit être après la fin de la 1re MT."); return; }
+    m.video = {...(m.video || {}), v1: a, v2: b}; persist(m); bg.remove(); go(); }; }
 function vidT(m, t){
   const v = m.video || {}; if (v.v1 == null && v.v2 == null) return t;
   const k2 = k2At(liveClock(m));
@@ -3073,11 +3092,10 @@ document.addEventListener("click", async (evt) => {
   else if (a === "cw-del"){ m.events = m.events.filter(e => e.id !== t.dataset.id && e.lk !== t.dataset.id); m.shots = m.shots.filter(s => s.ev !== t.dataset.id); if (state.cwSel === t.dataset.id) state.cwSel = null; persist(m); render(); }
   else if (a === "cw-skipshot"){ const ev = m.events.find(e => e.id === t.dataset.id); if (ev){ ev.noShot = 1; persist(m); render(); } }
   else if (a === "cw-new"){ const nm = newMatch({title:"Match codé en direct", opponent:""}); state.matches.set(nm.id, nm); state.currentId = nm.id; persist(nm); render(); openMatchModal(nm); }
-  else if (a === "cw-xml"){
-    const lm = t.dataset.fmt === "lm"; const xml = lm ? exportLongoMatchXML(m) : exportSportscodeXML(m); const base = "codage-" + slug(m.opponent || m.title) + (state.xmlHalf ? "-mt" + state.xmlHalf : "") + (lm ? "-longomatch" : "");
-    if (!S.downloads){ await saveFile(base + ".xml", xml); return; }
-    try { await S.downloads.save({filename: base + ".xml", data: xml}); }
-    catch (e){ if (e && e.code === "rejected_extension"){ if (await saveFile(base + ".xml.txt", xml)) toast("Enregistré en .xml.txt : retire le .txt avant de l'ouvrir dans Sportscode.", 5000); } else if (e && e.code !== "declined") toast("Export impossible : " + (e.message || "")); }
+  else if (a === "cw-xml"){ const lm = t.dataset.fmt === "lm";
+    // 2e MT codée : on demande les coups d'envoi dans la vidéo pour décaler la 2e MT de la durée de la pause
+    if (k2At(liveClock(m)) != null){ openXmlCalib(m, () => xmlDo(m, lm)); return; }
+    xmlDo(m, lm);
   }
 });
 // Appui immédiat (comme Sportscode) : on réagit au pointerdown, insensible aux rafraîchissements de la page
@@ -3291,7 +3309,7 @@ document.addEventListener("submit", (evt) => { if (evt.target.id === "ai-form"){
 document.addEventListener("keydown", (evt) => { if (evt.target.id === "ai-input" && evt.key === "Enter" && !evt.shiftKey){ evt.preventDefault(); aiSend(evt.target.value); } });
 
 { const _r = render; render = function(){ _r(); vpSync(); }; }
-window.__vp = {st: () => state, VP, now: () => nowSec(current()), m: () => current(), clock: () => liveClock(current())};
+window.__vp = {xml: m => exportSportscodeXML(m), st: () => state, VP, now: () => nowSec(current()), m: () => current(), clock: () => liveClock(current())};
 initStorage();
 })();
 </script>
