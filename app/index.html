@@ -1695,7 +1695,7 @@ function renderDocs(){
         return `<div class="doc"><div class="ext">${esc(d.ext || "?")}</div><div style="min-width:0"><div class="nm">${esc(d.name)}</div><div class="hint">${prettySize(d.size||0)} · ajouté le ${new Date(d.createdAt).toLocaleDateString("fr-FR")}${mt ? " · " + esc(mt.title) : ""}</div></div>
         <div class="acts">${/^(xml|xlsx|xls|csv|json|txt)$/.test(d.ext) ? `<button class="btn sm" data-act="doc-open" data-id="${d.id}">Ouvrir dans le dashboard</button>` : ""}${folderSelect("doc", d.id, (state.settings.docFolders || {})[d.id])}<button class="btn sm" data-act="doc-dl" data-id="${d.id}">Télécharger</button><button class="btn sm danger" data-act="doc-del" data-id="${d.id}">Supprimer</button></div></div>`; }).join("") : (canStore ? `<div class="empty">Aucun document pour l'instant.</div>` : "")}</div>
     </section>
-    <section class="panel c12"><div class="ph"><h2>Matchs enregistrés</h2><span class="sub">${matches.length} match${matches.length>1?"s":""}${state.folder ? " dans ce dossier" : ""}</span><button class="btn sm" data-act="combo-edit" style="margin-left:auto">⊕ Combiner les données</button></div>
+    <section class="panel c12"><div class="ph"><h2>Matchs enregistrés</h2><span class="sub">${matches.length} match${matches.length>1?"s":""}${state.folder ? " dans ce dossier" : ""}</span><span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" data-act="bk-all" title="Un seul fichier avec tous tes matchs, codages et réglages, à réimporter sur un autre appareil (tablette, version en ligne, autre ordinateur)">⇩ Sauvegarde complète</button><button class="btn sm" data-act="bk-load" title="Réimporter une sauvegarde complète : les matchs plus récents remplacent les anciens, rien n'est supprimé">⇧ Importer une sauvegarde</button><button class="btn sm" data-act="combo-edit">⊕ Combiner les données</button></span></div>
       ${canStore ? "" : folderBarHTML()}
       ${matches.length ? `<div class="tscroll"><table class="t"><thead><tr><th>Match</th><th>Date</th><th>Source</th><th style="text-align:right">Score</th><th></th></tr></thead><tbody>${matches.map(mm => { const st = teamStats(mm);
         return `<tr><td><span class="pill them" style="--opp:${themCol(mm)};--opp-ink:${inkOn(themCol(mm))}">${esc(mm.opponent || "?")}</span> ${esc(mm.title)}</td><td>${esc(mm.date || "–")}</td><td>${esc(mm.source ? mm.source.format : "Saisie")}</td><td class="n">${st.us.goals}–${st.them.goals}</td>
@@ -1858,6 +1858,8 @@ document.addEventListener("click", async (evt) => {
     case "new-match": { const nm = newMatch({title:"Nouveau match", opponent:""}); state.matches.set(nm.id, nm); state.currentId = nm.id; persist(nm); state.view = "collectif"; render(); openMatchModal(nm); break; }
     case "open-match": state.currentId = t.dataset.id; state.view = "collectif"; lsWrite(); render(); break;
     case "del-match": confirmBox(`Supprimer le match « ${esc(state.matches.get(t.dataset.id)?.title)} » ? Les documents stockés restent disponibles.`, "Supprimer", async () => { await removeMatch(t.dataset.id); if (state.currentId === t.dataset.id) state.currentId = null; render(); toast("Match supprimé."); }); break;
+    case "bk-all": backupAll(); break;
+    case "bk-load": { const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json"; inp.onchange = async () => { const f = inp.files[0]; if (!f) return; try { const j = JSON.parse(decodeText(await f.arrayBuffer())); if (!j || j.kind !== "analyse-data-backup"){ toast("Ce fichier n'est pas une sauvegarde complète."); return; } await importBackup(j); } catch (e){ toast("Lecture impossible : " + (e.message || "fichier invalide")); } }; inp.click(); break; }
     case "export-json": { const mm = state.matches.get(t.dataset.id); if (mm) saveFile(slug(mm.title) + ".json", JSON.stringify(mm, null, 1)); break; }
     case "shot-edit": state.shotEdit = !state.shotEdit; state.shotSel = null; state.hover = null; render(); break;
     case "shot-desel": state.shotSel = null; render(); break;
@@ -1946,10 +1948,24 @@ document.addEventListener("pointermove", (evt) => {
 // Import de fichiers
 $("#file-import").addEventListener("change", async (e) => { const files = [...e.target.files]; e.target.value = ""; await importFiles(files); });
 $("#file-docs").addEventListener("change", async (e) => { const files = [...e.target.files]; e.target.value = ""; await storeDocs(files); });
+// Sauvegarde complète : tous les matchs + réglages dans un fichier, pour passer de l'appli bureau à la version en ligne (tablette) et inversement
+function backupAll(){ const ms = [...state.matches.values()].filter(m => !m.sample && !m.combo);
+  const settings = {...(state.settings || {})}; delete settings.clubLogo;
+  const d = new Date(), stamp = d.toISOString().slice(0,16).replace(/[-:T]/g, "");
+  saveFile(`analyse-data-sauvegarde-${stamp}.json`, JSON.stringify({kind:"analyse-data-backup", v:1, at:Date.now(), matches:ms, settings}));
+  toast(`Sauvegarde complète : ${ms.length} match${ms.length > 1 ? "s" : ""}.`, 2500); }
+async function importBackup(j){ let add = 0, upd = 0, keep = 0;
+  for (const raw of (j.matches || [])){ if (!raw || !raw.id || !Array.isArray(raw.events)) continue; const cur = state.matches.get(raw.id);
+    if (cur && (cur.updatedAt || 0) >= (raw.updatedAt || 0)){ keep++; continue; }
+    const m = newMatch(raw); Object.assign(m, raw); state.matches.set(m.id, m); persist(m); cur ? upd++ : add++; }
+  if (j.settings){ const s0 = state.settings || {}; state.settings = {...j.settings, clubLogo: s0.clubLogo, folders: [...new Set([...(s0.folders || []), ...(j.settings.folders || [])])]}; await saveSettings(); try { applyCustomWins(); } catch {} }
+  render(); toast(`Sauvegarde importée : ${add} nouveau${add > 1 ? "x" : ""}, ${upd} mis à jour, ${keep} déjà à jour.`, 4000); }
 async function importFiles(files){
   const results = [];
   for (const f of files){
-    try { const buf = await f.arrayBuffer(); const m = await parseFileBuffer(buf, f.name); results.push({match:m, file:f, name:f.name}); }
+    try { const buf = await f.arrayBuffer();
+      if (/\.json$/i.test(f.name)){ let j = null; try { j = JSON.parse(decodeText(buf)); } catch {} if (j && j.kind === "analyse-data-backup"){ await importBackup(j); continue; } }
+      const m = await parseFileBuffer(buf, f.name); results.push({match:m, file:f, name:f.name}); }
     catch (err){ toast(`${f.name} : ${err.message || "lecture impossible"}`, 5000); }
   }
   if (results.length) openImportModal(results);
@@ -3332,7 +3348,7 @@ document.addEventListener("submit", (evt) => { if (evt.target.id === "ai-form"){
 document.addEventListener("keydown", (evt) => { if (evt.target.id === "ai-input" && evt.key === "Enter" && !evt.shiftKey){ evt.preventDefault(); aiSend(evt.target.value); } });
 
 { const _r = render; render = function(){ _r(); vpSync(); }; }
-window.__vp = {xml: m => exportSportscodeXML(m), st: () => state, VP, now: () => nowSec(current()), m: () => current(), clock: () => liveClock(current())};
+window.__vp = {xml: m => exportSportscodeXML(m), imp: j => importBackup(j), st: () => state, VP, now: () => nowSec(current()), m: () => current(), clock: () => liveClock(current())};
 initStorage();
 })();
 </script>
